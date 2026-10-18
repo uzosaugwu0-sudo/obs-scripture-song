@@ -5,6 +5,10 @@ import { createDiagnostics } from './diagnostics.js';
 import { createBrowserTransport } from '../transport/index.js';
 import { createSettingsStore } from './settings-store.js';
 import { initLiveBar } from './live-bar.js';
+import { createScriptureApi } from '../scripture/api.js';
+import { createOfflineProvider } from '../scripture/offline.js';
+import { openKv, idbCache } from '../core/idb.js';
+import { initScriptureTab } from './scripture-tab.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
@@ -47,6 +51,13 @@ const VIEWS = ['scripture', 'songs', 'style'];
     }
 
     liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
+    const scripture = createScriptureApi({
+      cache: idbCache(openKv('obs-stage-cache'), report('cache')),
+      offline: createOfflineProvider(),
+    });
+    tabs.scripture = initScriptureTab({
+      session, scripture, store, setStatus: status.setStatus, refresh: () => liveBar.refresh(),
+    });
     document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.tab)));
 
     transport.start();
