@@ -1,6 +1,7 @@
-/* OBS Stage Display — Overlay Styles
+/* OBS Stage Display - Overlay Styles
    One card, two kinds of content. A song slide shows a title above the text;
-   a scripture slide shows a reference below it. Everything else is shared. */
+   a scripture slide shows a reference below it. Themes restyle the card,
+   animations are classes added by render.js. */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -11,8 +12,6 @@ html, body {
   overflow: hidden;
   pointer-events: none;
 }
-
-/* ── Stage — positions the card on screen ──────────────── */
 
 #stage {
   position: fixed;
@@ -25,21 +24,17 @@ html, body {
   z-index: 9999;
   pointer-events: none;
 }
-
 #stage.hidden { display: none; }
-
 #stage.pos-bottom { bottom: 0; top: auto; padding-bottom: 28px; }
 #stage.pos-top    { top: 0; bottom: auto; padding-top: 28px; }
 #stage.pos-center { top: 50%; bottom: auto; transform: translateY(-50%); }
-
-/* ── Card ──────────────────────────────────────────────── */
 
 #card {
   width: 96%;
   max-width: 1800px;
   padding: 28px 52px 24px;
-  border-radius: 12px;
-  overflow: hidden;              /* clips background images to the radius */
+  border-radius: 14px;
+  overflow: hidden;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -49,36 +44,24 @@ html, body {
   transition: min-height 0.5s cubic-bezier(0.4, 0, 0.2, 1),
               max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: min-height, max-height;
-  --accent: #a78bfa;
+  --accent: #9ec1ff;
   /* background, font and vertical padding are set by JS */
 }
 
-/* Card off — text floats directly on the video */
+/* Card off: text floats directly on the video */
 #stage.no-card #card {
   border: none !important;
   box-shadow: none !important;
   background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 #stage.no-card .accent { display: none; }
-#stage.no-card #ov-body {
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.95),
-               0 1px 4px  rgba(0, 0, 0, 0.80);
-}
+#stage.no-card #ov-body { text-shadow: 0 2px 14px rgba(0, 0, 0, 0.95), 0 1px 4px rgba(0, 0, 0, 0.80); }
 #stage.no-card #ov-title,
-#stage.no-card #ov-ref {
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95);
-}
+#stage.no-card #ov-ref  { text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95); }
 
-/* ── Text wrapper — the only thing that animates ───────── */
-
-#wrap {
-  width: 100%;
-  text-align: center;
-  opacity: 1;
-  transition: none;
-}
-
-/* ── Song title (above the text) ───────────────────────── */
+#wrap { width: 100%; text-align: center; }
 
 #ov-title {
   font-weight: 700;
@@ -87,105 +70,75 @@ html, body {
   font-variant: small-caps;
   margin-bottom: 2px;
 }
-
-/* ── Verse text / lyric lines ──────────────────────────── */
-
 #ov-body {
   line-height: 1.7;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  white-space: pre-wrap;         /* keeps the operator's line breaks */
+  white-space: pre-wrap;
   width: 100%;
   max-width: 92%;
   margin: 0 auto;
 }
-
-/* ── Scripture reference (below the text) ──────────────── */
-
 #ov-ref {
   font-weight: 600;
   font-variant: small-caps;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
-
 #ov-title:empty, #ov-ref:empty { display: none; }
-
-/* ── Accent dividers ───────────────────────────────────── */
+.ln { display: block; }
 
 .accent {
   display: block;
   height: 1px;
-  background: linear-gradient(90deg, transparent,
-              var(--accent) 20%, var(--accent) 80%, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent) 20%, var(--accent) 80%, transparent);
 }
-
 .accent-top    { width: 60%; max-width: 400px; margin: 6px auto 2px; opacity: 0.45; }
 .accent-bottom { width: 80%; max-width: 900px; margin: 14px auto 10px; opacity: 0.50; }
-
-/* Each accent only appears with the element it belongs to */
 #stage.kind-verse .accent-top,
 #stage.kind-song  .accent-bottom { display: none; }
 #stage.no-title   .accent-top    { display: none; }
 #stage.no-ref     .accent-bottom { display: none; }
-
-/* ── Theme: Dark Stage ─────────────────────────────────── */
-
-.theme-dark #card {
-  border: 1px solid rgba(167, 139, 250, 0.30);
-  border-top: 2px solid rgba(167, 139, 250, 0.70);
-  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.06),
-              0 8px 48px rgba(0, 0, 0, 0.75),
-              inset 0 0 80px rgba(167, 139, 250, 0.02);
-  --accent: #a78bfa;
+/* Theme: Frosted (dark glass) */
+.theme-frosted #card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  --accent: #9ec1ff;
 }
-.theme-dark #ov-body  { color: #f1f5f9; }
-.theme-dark #ov-title,
-.theme-dark #ov-ref   { color: #a78bfa; }
+.theme-frosted #ov-body  { color: #ffffff; }
+.theme-frosted #ov-title,
+.theme-frosted #ov-ref   { color: #9ec1ff; }
 
-/* ── Theme: Classic Gold ───────────────────────────────── */
-
-.theme-gold #card {
-  border: 1px solid rgba(201, 168, 76, 0.40);
-  border-top: 2px solid rgba(201, 168, 76, 0.80);
-  box-shadow: 0 0 0 1px rgba(201, 168, 76, 0.08),
-              0 8px 48px rgba(0, 0, 0, 0.70),
-              inset 0 0 100px rgba(201, 168, 76, 0.03);
-  --accent: #c9a84c;
+/* Theme: Frosted Light */
+.theme-frosted-light #card {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.30);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  --accent: #2f5fd0;
 }
-.theme-gold #ov-body  { color: #f0e6c4; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.75); }
-.theme-gold #ov-title,
-.theme-gold #ov-ref   { color: #c9a84c; }
+.theme-frosted-light #ov-body  { color: #1a2233; }
+.theme-frosted-light #ov-title,
+.theme-frosted-light #ov-ref   { color: #2f5fd0; font-weight: 800; }
 
-/* ── Theme: Clean White ────────────────────────────────── */
-
-.theme-white #card {
-  border: 1px solid rgba(59, 130, 246, 0.30);
-  border-top: 3px solid #3b82f6;
-  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.42);
-  --accent: #3b82f6;
+/* Theme: Pure Type. No card by default; Show card adds a scrim set by JS */
+.theme-pure .accent { display: none; }
+.theme-pure #card   { border: none; box-shadow: none; }
+.theme-pure #ov-body {
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.85), 0 0 3px rgba(0, 0, 0, 0.9);
 }
-.theme-white #ov-body  { color: #1e293b; }
-.theme-white #ov-title,
-.theme-white #ov-ref   { color: #3b82f6; font-weight: 800; }
-.theme-white .accent   { opacity: 0.32; }
-
-/* ── Theme: Neon Live ──────────────────────────────────── */
-
-.theme-neon #card {
-  border: 1px solid rgba(20, 240, 180, 0.25);
-  border-top: 2px solid rgba(20, 240, 180, 0.75);
-  box-shadow: 0 0 32px rgba(20, 240, 180, 0.08),
-              0 8px 48px rgba(0, 0, 0, 0.80);
-  --accent: #14f0b4;
+.theme-pure #ov-title,
+.theme-pure #ov-ref {
+  color: #ffffff;
+  opacity: 0.9;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
 }
-.theme-neon #ov-body  { color: #e0fff8; letter-spacing: 0.01em; }
-.theme-neon #ov-title,
-.theme-neon #ov-ref   { color: #14f0b4; }
 
-/* ── Theme: Sacred Light ───────────────────────────────── */
-/* The background image fills the card; JS sets the image itself. */
-
+/* Theme: Sacred Light. The background image fills the card; JS sets the image. */
 .theme-sacred-light #card {
   border: 1px solid rgba(232, 201, 122, 0.20);
   box-shadow: 0 8px 48px rgba(0, 0, 0, 0.70);
@@ -193,8 +146,7 @@ html, body {
 }
 .theme-sacred-light #ov-body {
   color: #ffffff;
-  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.75),
-               0 1px 4px  rgba(0, 0, 0, 0.55);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.75), 0 1px 4px rgba(0, 0, 0, 0.55);
 }
 .theme-sacred-light #ov-title,
 .theme-sacred-light #ov-ref {
@@ -202,17 +154,15 @@ html, body {
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.70);
 }
 
-/* ── Theme: Custom — structure only, colours from JS ───── */
-
+/* Theme: Custom. Structure only; colours come from JS */
 .theme-custom #card {
   border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow: 0 8px 48px rgba(0, 0, 0, 0.60);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
-/* ── Font sizes ────────────────────────────────────────── */
-/* #ov-body size is set by JS so it can scale with text length.
-   These floors are overridden inline by the Overlay Scale slider. */
-
+/* Font sizes: the body size is set by JS so it can scale with text length */
 #stage.fs-sm #card { min-height: 18vh; }
 #stage.fs-md #card { min-height: 24vh; }
 #stage.fs-lg #card { min-height: 32vh; }
@@ -222,12 +172,37 @@ html, body {
 .fs-md #ov-title, .fs-md #ov-ref { font-size: 1.10rem; }
 .fs-lg #ov-title, .fs-lg #ov-ref { font-size: 1.30rem; }
 .fs-xl #ov-title, .fs-xl #ov-ref { font-size: 1.55rem; }
+@keyframes riseIn     { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes riseOut    { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px); } }
+@keyframes wipeIn     { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes wipeOut    { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(0 0 0 100%); } }
+@keyframes fadeCardIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeCardOut{ from { opacity: 1; } to { opacity: 0; } }
+@keyframes textIn     { from { opacity: 0; } to { opacity: 1; } }
+@keyframes textOut    { from { opacity: 1; } to { opacity: 0; } }
+@keyframes lineIn     { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* ── Animations (text wrapper only) ────────────────────── */
+/* Soft rise */
+.anim-rise #card.card-in  { animation: riseIn 0.5s ease-out both; }
+.anim-rise #card.card-out { animation: riseOut 0.35s ease-in both; }
 
-@keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
-@keyframes fadeOut   { from { opacity: 1; } to { opacity: 0; } }
-@keyframes slideUp   { from { transform: translateY(36px);  opacity: 0; }
-                       to   { transform: translateY(0);     opacity: 1; } }
-@keyframes slideDown { from { transform: translateY(-36px); opacity: 0; }
-                       to   { transform: translateY(0);     opacity: 1; } }
+/* Glass wipe: the card sweeps in, then the text fades in */
+.anim-wipe #card.card-in  { animation: wipeIn 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.anim-wipe #card.card-in #wrap { animation: textIn 0.35s ease-out 0.25s both; }
+.anim-wipe #card.card-out { animation: wipeOut 0.4s ease-in both; }
+
+/* Line by line: card fades, then each line rises in, staggered (--i and --stagger set by JS) */
+.anim-lines #card.card-in  { animation: fadeCardIn 0.35s ease-out both; }
+.anim-lines #card.card-out { animation: fadeCardOut 0.35s ease-in both; }
+.anim-lines.lines-go .ln {
+  opacity: 0;
+  animation: lineIn 0.45s ease-out both;
+  animation-delay: calc(var(--i, 0) * var(--stagger, 0.35s) + 0.15s);
+}
+
+/* Text swap while the card stays up (Soft rise and Glass wipe) */
+#wrap.text-out { animation: textOut 0.2s ease-in both; }
+#wrap.text-in  { animation: textIn 0.3s ease-out both; }
+
+/* Instant cut: nothing moves */
+.anim-cut #card, .anim-cut #wrap { animation: none !important; }
