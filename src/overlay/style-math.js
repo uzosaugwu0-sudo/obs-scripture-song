@@ -1,10 +1,16 @@
+// Card colour used behind the text for themes that have a card.
 export const THEME_BG = {
-  dark:  '#0a0a14',
-  gold:  '#080810',
-  white: '#ffffff',
-  neon:  '#050c10',
-  'sacred-light': '#0a0a14',
+  frosted:         '#0e121e',
+  'frosted-light': '#ffffff',
+  pure:            '#0a0c14',   // only used when Show card is turned on for Pure Type
+  'sacred-light':  '#0a0a14',
 };
+
+// Base alpha multiplied by the opacity slider, so the default 88% gives 0.55 / 0.704 glass.
+export const THEME_ALPHA = { frosted: 0.625, 'frosted-light': 0.8 };
+
+// Pure Type floats text on the video; every other theme starts with its card on.
+const CARD_DEFAULT = { frosted: true, 'frosted-light': true, pure: false, 'sacred-light': true, custom: true };
 
 // Body type scales with text length: short text large, long text small.
 export const SIZE_RANGE = {
@@ -27,6 +33,15 @@ export function hexToRgba(hex, alpha) {
   return 'rgba(' + parseInt(h.slice(0, 2), 16) + ', '
                  + parseInt(h.slice(2, 4), 16) + ', '
                  + parseInt(h.slice(4, 6), 16) + ', ' + a + ')';
+}
+
+export function cardAlpha(theme, opacityPct) {
+  const alpha = (opacityPct / 100) * (THEME_ALPHA[theme] ?? 1);
+  return Math.max(0, Math.min(1, alpha));
+}
+
+export function defaultShowCard(theme) {
+  return CARD_DEFAULT[theme] ?? true;
 }
 
 export function getScale(state) {
