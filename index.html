@@ -1,0 +1,1814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stage Display</title>
+  <link rel="stylesheet" href="assets/dock.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1><span class="logo-dot"></span> Stage Display</h1>
+    <div class="status-row">
+      <span class="live-kind hidden" id="live-kind"></span>
+      <span class="status-label" id="status-label">Off</span>
+      <div class="status-dot" id="status-dot"></div>
+    </div>
+  </header>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-scripture" data-tab="scripture">
+      <span class="tab-icon">✝</span> Scripture
+    </button>
+    <button class="tab-btn" id="tab-songs" data-tab="songs">
+      <span class="tab-icon">♪</span> Songs
+    </button>
+  </div>
+
+  <!-- ══════════════════ SCRIPTURE ══════════════════ -->
+  <div class="panel" id="panel-scripture">
+
+    <div class="card card--scripture">
+      <div class="card-title">Verse Lookup</div>
+
+      <div class="ref-wrap">
+        <div class="ref-row">
+          <input type="text" id="ref-input" placeholder="e.g. John 3:16" autocomplete="off" spellcheck="false">
+          <button class="btn btn-primary" id="btn-lookup">Look Up</button>
+        </div>
+        <ul class="book-suggest hidden" id="book-suggest"></ul>
+      </div>
+
+      <!-- Quick reference: three typed boxes, no punctuation, auto-advance -->
+      <div class="qr-wrap">
+        <div class="qr-row">
+          <div class="qr-field qr-field--book">
+            <span class="field-label">Book</span>
+            <input type="text" id="qr-book" placeholder="John" autocomplete="off" spellcheck="false">
+            <ul class="book-suggest hidden" id="qr-book-suggest"></ul>
+          </div>
+          <div class="qr-field">
+            <span class="field-label">Ch</span>
+            <input type="text" id="qr-chapter" placeholder="3" inputmode="numeric" autocomplete="off">
+          </div>
+          <div class="qr-field">
+            <span class="field-label">Verse</span>
+            <input type="text" id="qr-verse" placeholder="16" inputmode="numeric" autocomplete="off">
+          </div>
+          <button class="btn btn-primary qr-go" id="qr-go">Go</button>
+        </div>
+        <div class="qr-hint" id="qr-hint">Type the book, chapter and verse — it jumps between boxes for you.</div>
+      </div>
+
+      <div class="trans-grid">
+        <label><span class="field-label">Language</span>
+          <select id="language-sel"></select>
+        </label>
+        <label><span class="field-label">Translation</span>
+          <select id="translation-sel"></select>
+        </label>
+      </div>
+
+      <div class="cv-row">
+        <label><span class="field-label">Book</span>
+          <select id="book-sel"><option value="">Choose…</option></select>
+        </label>
+        <label><span class="field-label">Chapter</span>
+          <select id="chapter-sel" disabled></select>
+        </label>
+        <label><span class="field-label">Verse</span>
+          <select id="verse-sel" disabled></select>
+        </label>
+        <button class="btn btn-ghost" id="btn-goto" disabled title="Look up this reference">Go</button>
+      </div>
+
+      <div class="quick-books" id="quick-books"></div>
+
+      <div class="inline-checks">
+        <label class="checkbox-row"><input type="checkbox" id="auto-show-cb"><span>Auto Show on lookup</span></label>
+      </div>
+
+      <div class="field-label" style="margin-top:9px;">Verse Text <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);margin-left:4px;">(edit before it goes live)</span></div>
+      <textarea id="verse-text" class="verse-text-area" placeholder="Look up a reference and the text appears here…"></textarea>
+    </div>
+
+    <div class="card card--scripture">
+      <div class="card-title">Search &amp; Random</div>
+
+      <div class="scripture-search-row">
+        <input type="text" id="scripture-search" placeholder="Search words or phrases…" autocomplete="off" spellcheck="false">
+        <button class="btn btn-ghost" id="btn-scripture-search">Search</button>
+      </div>
+      <ul class="search-results hidden" id="search-results"></ul>
+
+      <div class="random-row">
+        <select id="random-scope">
+          <option value="all">Entire Bible</option>
+          <option value="ot">Old Testament</option>
+          <option value="nt">New Testament</option>
+          <option value="gospels">Gospels only</option>
+          <option value="wisdom">Psalms &amp; Proverbs</option>
+        </select>
+        <button class="btn btn-ghost" id="btn-random">🎲 Random Verse</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════ SONGS ══════════════════ -->
+  <div class="panel hidden" id="panel-songs">
+
+    <div class="card card--library">
+      <div class="card-title">Song Library</div>
+      <div class="lib-actions">
+        <input type="text" id="lib-search" class="lib-search" placeholder="Search songs…" autocomplete="off" spellcheck="false">
+        <button class="btn btn-primary" id="btn-new-song">+ New</button>
+      </div>
+      <div class="search-mode-row">
+        <span class="field-label" style="margin-right:5px;">Highlight by</span>
+        <div class="toggle-group search-toggle">
+          <button class="toggle-btn active" data-mode="title">Title</button>
+          <button class="toggle-btn"        data-mode="lyrics">Lyrics</button>
+        </div>
+      </div>
+      <ul class="song-list" id="song-list"></ul>
+      <div class="lib-file-actions">
+        <button class="btn btn-ghost" id="btn-export" title="Export all songs as JSON">↓ JSON</button>
+        <button class="btn btn-ghost" id="btn-import-file" title="Import from a JSON or TXT file">↑ File</button>
+        <button class="btn btn-ghost" id="btn-import-folder" title="Import all TXT/JSON files from a folder">⊞ Folder</button>
+        <button class="btn btn-ghost" id="btn-remove-duplicates" title="Find songs with matching titles and remove the extra copies">⧉ Dupes</button>
+        <button class="btn btn-danger" id="btn-clear-all-songs" title="Delete every song in the library">🗑 Clear All</button>
+        <input type="file" id="import-file-input" accept=".json,.txt,.csv,.tsv" style="display:none;">
+        <input type="file" id="import-folder-input" accept=".json,.txt,.csv,.tsv" multiple webkitdirectory style="display:none;">
+      </div>
+      <div class="output-folder-bar">
+        <div class="output-folder-info">
+          <span>📁</span>
+          <span id="output-folder-label" class="output-folder-label">No output folder set</span>
+        </div>
+        <div class="output-folder-btns">
+          <button class="btn btn-ghost btn-xs" id="btn-set-folder" title="Opens at Desktop — navigate up to C:\ or any drive">Set Folder</button>
+          <button class="btn btn-ghost btn-xs" id="btn-save-all-txt" disabled>Save All</button>
+          <button class="btn-icon" id="btn-clear-folder" style="display:none;">✕</button>
+        </div>
+      </div>
+      <div id="import-panel" class="import-panel hidden">
+        <div class="import-panel-head">
+          <span id="import-panel-title">Import Preview</span>
+          <button class="btn-icon" id="btn-import-close">✕</button>
+        </div>
+        <p class="import-panel-hint" id="import-panel-hint"></p>
+        <ul class="import-song-list" id="import-song-list"></ul>
+        <div class="import-panel-foot">
+          <button class="btn btn-primary" id="btn-import-confirm">Import Selected</button>
+          <button class="btn btn-ghost"   id="btn-import-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card--editor">
+      <div class="card-title" id="editor-title">Editor — New Song</div>
+      <div style="margin-bottom:7px;">
+        <div class="field-label" style="margin-bottom:3px;">Song Title</div>
+        <input type="text" id="song-title-input" placeholder="e.g. Amazing Grace">
+      </div>
+      <div class="field-label" style="margin-bottom:4px;">Slides <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);margin-left:4px;">(one slide per block)</span></div>
+      <div id="slide-list" class="slide-list"></div>
+      <div class="slide-editor-row">
+        <textarea id="slide-textarea" placeholder="Type slide text here…&#10;Use Enter for new lines within a slide.&#10;Click a slide chip above to edit it."></textarea>
+        <div class="slide-editor-btns">
+          <button class="btn btn-primary" id="btn-add-slide"    title="Add new slide">+</button>
+          <button class="btn btn-ghost"   id="btn-update-slide" title="Update selected slide" disabled>✓</button>
+          <button class="btn btn-danger"  id="btn-delete-slide" title="Delete selected slide" disabled>✕</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;margin-top:7px;">
+        <button class="btn btn-primary" id="btn-save-song" style="flex:1;">Save Song</button>
+        <button class="btn btn-danger"  id="btn-delete-song" disabled>Delete</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════ SHARED ══════════════════ -->
+  <div class="card card--stream">
+    <div class="card-title">Stream Controls</div>
+    <p id="preview-lines">Look up a verse or pick a slide to preview…</p>
+    <div class="controls-row" style="margin-bottom:6px;">
+      <button class="btn btn-prev"  id="btn-prev" disabled>‹</button>
+      <button class="btn btn-show"  id="btn-show" disabled>▶ Show</button>
+      <button class="btn btn-hide"  id="btn-hide" disabled>◼ Hide</button>
+      <button class="btn btn-next"  id="btn-next" disabled>›</button>
+      <button class="btn btn-clear" id="btn-clear">✕</button>
+    </div>
+    <div class="kbd-hint"><kbd>←</kbd><kbd>→</kbd> prev/next · <kbd>Space</kbd> show/hide · <kbd>Esc</kbd> hide</div>
+  </div>
+
+  <div class="card card--display">
+    <div class="card-title">Display Settings</div>
+    <div class="settings-grid" style="margin-bottom:7px;">
+      <label><span class="field-label">Theme</span>
+        <select id="theme-sel">
+          <option value="dark" selected>Dark Stage</option>
+          <option value="gold">Classic Gold</option>
+          <option value="white">Clean White</option>
+          <option value="neon">Neon Live</option>
+          <option value="sacred-light">Sacred Light</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label><span class="field-label">Position</span>
+        <select id="position-sel">
+          <option value="bottom" selected>Bottom</option>
+          <option value="center">Center</option>
+          <option value="top">Top</option>
+        </select>
+      </label>
+      <label><span class="field-label">Font Size</span>
+        <select id="fontsize-sel">
+          <option value="sm">Small</option>
+          <option value="md" selected>Medium</option>
+          <option value="lg">Large</option>
+          <option value="xl">Extra Large</option>
+        </select>
+      </label>
+      <label><span class="field-label">Animation</span>
+        <select id="animation-sel">
+          <option value="fade" selected>Fade</option>
+          <option value="slide">Slide</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="card-divider"></div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Font</div>
+      <div class="font-row">
+        <select id="font-sel"></select>
+        <button class="btn-italic" id="btn-italic" title="Italic">I</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Background Opacity</div>
+      <div class="opacity-row">
+        <input type="range" id="opacity-slider" min="0" max="100" value="88">
+        <span class="opacity-value" id="opacity-value">88%</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Overlay Scale <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);margin-left:4px;">(height only, width unchanged)</span></div>
+      <div class="opacity-row">
+        <input type="range" id="scale-slider" min="50" max="150" step="5" value="100">
+        <span class="opacity-value" id="scale-value">100%</span>
+      </div>
+    </div>
+
+    <div class="inline-checks" style="margin-bottom:7px;">
+      <label class="checkbox-row"><input type="checkbox" id="show-card-cb" checked><span>Show Card</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="show-title-cb" checked><span>Song Title</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="show-ref-cb" checked><span>Verse Reference</span></label>
+    </div>
+
+    <div class="card-divider"></div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Background Image</div>
+      <div class="bg-image-row">
+        <button class="btn btn-ghost btn-xs" id="btn-bg-image">Choose Image</button>
+        <button class="btn btn-ghost btn-xs" id="btn-bg-clear" style="display:none;">Remove</button>
+        <span class="bg-image-name" id="bg-image-name">None — using theme colour</span>
+        <input type="file" id="bg-image-input" accept="image/*" style="display:none;">
+      </div>
+    </div>
+
+    <div id="custom-colors-section">
+      <div class="card-divider"></div>
+      <div class="field-label" style="margin-bottom:5px;">Custom Colors</div>
+      <div class="color-row">
+        <div class="color-item"><span>Background</span><input type="color" id="color-bg" value="#0a0a14"></div>
+        <div class="color-item"><span>Main Text</span><input type="color" id="color-text" value="#ffffff"></div>
+        <div class="color-item"><span>Title / Ref</span><input type="color" id="color-accent" value="#a78bfa"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="status-bar"></div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(() => {
+try {
+
+  // ── DOM ───────────────────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+
+  const statusDot = $('status-dot'), statusLabel = $('status-label'),
+        statusBar = $('status-bar'), liveKind = $('live-kind');
+
+  // Scripture
+  const refInput = $('ref-input'), btnLookup = $('btn-lookup'),
+        bookSuggest = $('book-suggest'), languageSel = $('language-sel'),
+        translationSel = $('translation-sel'), bookSel = $('book-sel'),
+        chapterSel = $('chapter-sel'), verseSel = $('verse-sel'),
+        btnGoto = $('btn-goto'), quickBooks = $('quick-books'),
+        autoShowCb = $('auto-show-cb'), verseText = $('verse-text'),
+        scriptureSearch = $('scripture-search'), btnScriptureSearch = $('btn-scripture-search'),
+        searchResults = $('search-results'), randomScope = $('random-scope'),
+        btnRandom = $('btn-random');
+
+  // Quick reference boxes
+  const qrBook = $('qr-book'), qrChapter = $('qr-chapter'),
+        qrVerse = $('qr-verse'), qrGo = $('qr-go'),
+        qrSuggest = $('qr-book-suggest'), qrHint = $('qr-hint');
+
+  // Songs
+  const libSearch = $('lib-search'), btnNewSong = $('btn-new-song'),
+        songList = $('song-list'), editorTitle = $('editor-title'),
+        songTitleInput = $('song-title-input'), slideList = $('slide-list'),
+        slideTextarea = $('slide-textarea'), btnAddSlide = $('btn-add-slide'),
+        btnUpdateSlide = $('btn-update-slide'), btnDeleteSlide = $('btn-delete-slide'),
+        btnSaveSong = $('btn-save-song'), btnDeleteSong = $('btn-delete-song'),
+        btnExport = $('btn-export'), btnRemoveDuplicates = $('btn-remove-duplicates'),
+        btnClearAllSongs = $('btn-clear-all-songs'), btnImportFile = $('btn-import-file'),
+        btnImportFolder = $('btn-import-folder'), importFileInput = $('import-file-input'),
+        importFolderInput = $('import-folder-input'), importPanel = $('import-panel'),
+        importPanelTitle = $('import-panel-title'), importPanelHint = $('import-panel-hint'),
+        importSongList = $('import-song-list'), btnImportConfirm = $('btn-import-confirm'),
+        btnImportCancel = $('btn-import-cancel'), btnImportClose = $('btn-import-close'),
+        btnSetFolder = $('btn-set-folder'), btnSaveAllTxt = $('btn-save-all-txt'),
+        btnClearFolder = $('btn-clear-folder'), outputFolderLabel = $('output-folder-label');
+
+  // Shared
+  const previewLines = $('preview-lines'), btnPrev = $('btn-prev'), btnShow = $('btn-show'),
+        btnHide = $('btn-hide'), btnNext = $('btn-next'), btnClear = $('btn-clear'),
+        themeSel = $('theme-sel'), positionSel = $('position-sel'),
+        fontsizeSel = $('fontsize-sel'), animationSel = $('animation-sel'),
+        fontSel = $('font-sel'), btnItalic = $('btn-italic'),
+        opacitySlider = $('opacity-slider'), opacityValue = $('opacity-value'),
+        scaleSlider = $('scale-slider'), scaleValue = $('scale-value'),
+        showCardCb = $('show-card-cb'), showTitleCb = $('show-title-cb'),
+        showRefCb = $('show-ref-cb'), customColorsSection = $('custom-colors-section'),
+        colorBg = $('color-bg'), colorText = $('color-text'), colorAccent = $('color-accent'),
+        btnBgImage = $('btn-bg-image'), btnBgClear = $('btn-bg-clear'),
+        bgImageName = $('bg-image-name'), bgImageInput = $('bg-image-input');
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let activeTab      = 'scripture';
+  let isLive         = false;
+  let liveTab        = null;     // which tab put the current content on screen
+  let isItalic       = false;
+  let bgImageData    = null;
+
+  // Scripture
+  let currentPlainRef = '';      // "John 3:16" — used for stepping
+  let currentRefLabel = '';      // "John 3:16 — KJV" — what goes on screen
+  let suggestIdx      = -1;
+  let looking         = false;
+
+  // Songs
+  let songs           = [];
+  let activeSongId    = null;
+  let activeSlideIdx  = null;
+  let currentSlideIdx = -1;
+  let libFilter       = '';
+  let libSearchMode   = 'title';
+  let _outputDirHandle = null;
+  let _pendingImport   = [];
+
+  const QUICK_BOOKS = ['John','Romans','Psalms','Matthew','Genesis',
+                       'Proverbs','Isaiah','Hebrews','Acts','Revelation'];
+
+  // ── Utility ───────────────────────────────────────────────────────────────
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+  function setStatus(msg, type) {
+    statusBar.textContent = msg;
+    statusBar.className   = type ? 'is-' + type : '';
+    if (msg) setTimeout(() => {
+      if (statusBar.textContent === msg) { statusBar.textContent = ''; statusBar.className = ''; }
+    }, 3500);
+  }
+
+  function setDotState(state) {
+    statusDot.className = 'status-dot' +
+      (state === 'live' ? ' live' : state === 'hidden' ? ' hidden-state' : '');
+    statusLabel.textContent = state === 'live' ? 'Live' : state === 'hidden' ? 'Hidden' : 'Off';
+    if (state === 'live' && liveTab) {
+      liveKind.className   = 'live-kind ' + (liveTab === 'scripture' ? 'is-verse' : 'is-song');
+      liveKind.textContent = liveTab === 'scripture' ? 'Verse' : 'Song';
+    } else {
+      liveKind.className = 'live-kind hidden';
+    }
+  }
+
+  function escapeHtml(s) {
+    return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  }
+
+  function highlightMatch(text, q) {
+    if (!q) return escapeHtml(text);
+    const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    return escapeHtml(text).replace(re, '<mark>$1</mark>');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TABS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function setTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.tab === tab));
+    $('panel-scripture').classList.toggle('hidden', tab !== 'scripture');
+    $('panel-songs').classList.toggle('hidden', tab !== 'songs');
+    refreshControls();
+  }
+
+  /** Enable/disable the shared stream buttons for whatever tab is showing. */
+  function refreshControls() {
+    if (activeTab === 'scripture') {
+      const has = verseText.value.trim().length > 0;
+      btnShow.disabled = !has;
+      btnHide.disabled = !isLive;
+      btnPrev.disabled = !currentPlainRef;
+      btnNext.disabled = !currentPlainRef;
+      previewLines.textContent = has
+        ? verseText.value.trim() + (currentRefLabel ? '\n— ' + currentRefLabel : '')
+        : 'Look up a verse to preview…';
+    } else {
+      const song  = getActiveSong();
+      const lines = (activeSlideIdx !== null && song)
+        ? (song.slides[activeSlideIdx] || '')
+        : slideTextarea.value.trim();
+      btnShow.disabled = !lines;
+      btnHide.disabled = !isLive;
+      const canNav = !!(song && song.slides.length);
+      btnPrev.disabled = !canNav;
+      btnNext.disabled = !canNav;
+      previewLines.textContent = lines || 'Pick a slide to preview…';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHARED STATE / SENDING
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function getCurrentState(action) {
+    const base = {
+      action,
+      theme:         themeSel.value,
+      position:      positionSel.value,
+      fontSize:      fontsizeSel.value,
+      animation:     animationSel.value,
+      font:          fontSel.value,
+      italic:        isItalic,
+      opacity:       parseInt(opacitySlider.value, 10),
+      scale:         parseInt(scaleSlider.value, 10),
+      showCard:      showCardCb.checked,
+      showTitle:     showTitleCb.checked,
+      showReference: showRefCb.checked,
+      bgMode:        bgImageData ? 'image' : 'color',
+      bgImage:       bgImageData,
+      visible:       action === 'show',
+      customColors:  { bg: colorBg.value, text: colorText.value, accent: colorAccent.value },
+    };
+
+    // While something is live, style changes must keep re-sending that
+    // content — even if the operator has since switched tabs to prepare the
+    // next thing. Otherwise nudging the opacity slider would silently swap
+    // what is on screen.
+    const tab = (action === 'show' && isLive && liveTab && !_showRequested)
+      ? liveTab : activeTab;
+
+    if (tab === 'scripture') {
+      return { ...base, kind: 'verse', title: '',
+               body: verseText.value.trim(), reference: currentRefLabel };
+    }
+    const song  = getActiveSong();
+    const lines = (activeSlideIdx !== null && song)
+      ? (song.slides[activeSlideIdx] || '')
+      : slideTextarea.value.trim();
+    return { ...base, kind: 'song', reference: '',
+             title: (song ? song.title : songTitleInput.value.trim()) || '',
+             body: lines };
+  }
+
+  let _showRequested = false;
+
+  function sendShow() {
+    _showRequested = true;
+    StageApp.send(getCurrentState('show'));
+    _showRequested = false;
+    liveTab = activeTab;
+    isLive  = true;
+    setDotState('live');
+    refreshControls();
+  }
+
+  function resendIfLive() { if (isLive) StageApp.send(getCurrentState('show')); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCRIPTURE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function currentTranslation() { return translationSel.value || 'KJV'; }
+
+  function buildLanguageSelect() {
+    StageApp.LANGUAGES.forEach(lang => {
+      const o = document.createElement('option');
+      o.value = lang; o.textContent = lang;
+      languageSel.appendChild(o);
+    });
+    languageSel.value = 'English';
+  }
+
+  function buildTranslationSelect(keepKey) {
+    const lang = languageSel.value;
+    translationSel.innerHTML = '';
+    StageApp.TRANSLATIONS.filter(t => t.lang === lang).forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.key;
+      o.textContent = t.key + ' — ' + t.label;
+      translationSel.appendChild(o);
+    });
+    if (keepKey && [...translationSel.options].some(o => o.value === keepKey)) {
+      translationSel.value = keepKey;
+    }
+  }
+
+  function buildBookSelect() {
+    StageApp.BIBLE_BOOKS.forEach(([name], i) => {
+      const o = document.createElement('option');
+      o.value = String(i + 1); o.textContent = name;
+      bookSel.appendChild(o);
+    });
+  }
+
+  function buildQuickBooks() {
+    QUICK_BOOKS.forEach(name => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'quick-book';
+      b.textContent = name;
+      b.addEventListener('click', () => {
+        const idx = StageApp.BIBLE_BOOKS.findIndex(x => x[0] === name);
+        if (idx === -1) return;
+        bookSel.value = String(idx + 1);
+        onBookChange();
+        document.querySelectorAll('.quick-book').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+      });
+      quickBooks.appendChild(b);
+    });
+  }
+
+  function onBookChange() {
+    const id = parseInt(bookSel.value, 10);
+    chapterSel.innerHTML = '';
+    verseSel.innerHTML   = '';
+    if (!id) {
+      chapterSel.disabled = verseSel.disabled = btnGoto.disabled = true;
+      return;
+    }
+    const chapters = StageApp.BIBLE_BOOKS[id - 1][2];
+    for (let c = 1; c <= chapters; c++) {
+      const o = document.createElement('option');
+      o.value = String(c); o.textContent = String(c);
+      chapterSel.appendChild(o);
+    }
+    chapterSel.disabled = false;
+    onChapterChange();
+  }
+
+  async function onChapterChange() {
+    const bookId  = parseInt(bookSel.value, 10);
+    const chapter = parseInt(chapterSel.value, 10);
+    if (!bookId || !chapter) return;
+
+    verseSel.innerHTML = '<option value="1">1</option>';
+    verseSel.disabled  = true;
+    btnGoto.disabled   = true;
+
+    // The API knows how many verses a chapter really has. If it can't be
+    // reached, fall back to a generous list rather than blocking the picker.
+    const count = await StageApp.fetchVerseCount(currentTranslation(), bookId, chapter) || 50;
+    verseSel.innerHTML = '';
+    for (let v = 1; v <= count; v++) {
+      const o = document.createElement('option');
+      o.value = String(v); o.textContent = String(v);
+      verseSel.appendChild(o);
+    }
+    verseSel.disabled = false;
+    btnGoto.disabled  = false;
+  }
+
+  function gotoFromPickers() {
+    const bookId = parseInt(bookSel.value, 10);
+    if (!bookId) return;
+    const ref = StageApp.buildReference(
+      StageApp.BIBLE_BOOKS[bookId - 1][0], chapterSel.value, verseSel.value);
+    refInput.value = ref;
+    lookup();
+  }
+
+  async function lookup(refOverride) {
+    if (looking) return;
+    const ref = (refOverride !== undefined ? refOverride : refInput.value).trim();
+    if (!ref) { setStatus('Enter a reference first.', 'error'); return; }
+
+    looking = true;
+    btnLookup.disabled = true;
+    setStatus('Looking up ' + ref + '…', 'loading');
+
+    const result = await StageApp.fetchVerse(ref, currentTranslation());
+
+    looking = false;
+    btnLookup.disabled = false;
+
+    if (result.error) { setStatus(result.error, 'error'); return; }
+
+    refInput.value   = result.rawRef;
+    verseText.value  = result.text;
+    currentPlainRef  = result.rawRef;
+    currentRefLabel  = result.reference;
+    hideSuggest();
+    syncPickersTo(result);
+    refreshControls();
+    setStatus(result.reference, 'success');
+
+    if (autoShowCb.checked) sendShow();
+  }
+
+  async function stepVerse(dir) {
+    if (!currentPlainRef) return;
+    setStatus(dir > 0 ? 'Next verse…' : 'Previous verse…', 'loading');
+    const next = await StageApp.stepReference(currentPlainRef, currentTranslation(), dir);
+    if (!next) { setStatus('That is the end of the Bible.', ''); return; }
+
+    const result = await StageApp.fetchVerse(next, currentTranslation());
+    if (result.error) { setStatus(result.error, 'error'); return; }
+
+    refInput.value  = result.rawRef;
+    verseText.value = result.text;
+    currentPlainRef = result.rawRef;
+    currentRefLabel = result.reference;
+    syncPickersTo(result);
+    refreshControls();
+    setStatus(result.reference, 'success');
+
+    // Stepping while live updates the screen straight away.
+    if (isLive || autoShowCb.checked) sendShow();
+  }
+
+  function syncPickersTo(result) {
+    if (!result.bookId) return;
+
+    // Keep the quick-reference boxes showing whatever was last looked up,
+    // whether it came from a quick book, the dropdowns, search or random.
+    const book = StageApp.BIBLE_BOOKS[result.bookId - 1][0];
+    qrBook.value    = book;
+    qrChapter.value = result.chapter;
+    qrVerse.value   = result.endVerse ? `${result.verse}-${result.endVerse}` : result.verse;
+    qrBookIdx       = result.bookId - 1;
+
+    bookSel.value = String(result.bookId);
+    const chapters = StageApp.BIBLE_BOOKS[result.bookId - 1][2];
+    if (chapterSel.options.length !== chapters) {
+      chapterSel.innerHTML = '';
+      for (let c = 1; c <= chapters; c++) {
+        const o = document.createElement('option');
+        o.value = String(c); o.textContent = String(c);
+        chapterSel.appendChild(o);
+      }
+      chapterSel.disabled = false;
+    }
+    chapterSel.value = String(result.chapter);
+  }
+
+  // ── Book autocomplete ─────────────────────────────────────────────────────
+
+  function showSuggest(names) {
+    bookSuggest.innerHTML = '';
+    suggestIdx = -1;
+    if (!names.length) { hideSuggest(); return; }
+    names.forEach(name => {
+      const li = document.createElement('li');
+      li.textContent = name;
+      li.addEventListener('mousedown', e => {   // mousedown beats blur
+        e.preventDefault();
+        refInput.value = name + ' ';
+        hideSuggest();
+        refInput.focus();
+      });
+      bookSuggest.appendChild(li);
+    });
+    bookSuggest.classList.remove('hidden');
+  }
+
+  function hideSuggest() {
+    bookSuggest.classList.add('hidden');
+    bookSuggest.innerHTML = '';
+    suggestIdx = -1;
+  }
+
+  function moveSuggest(dir) {
+    const items = [...bookSuggest.querySelectorAll('li')];
+    if (!items.length) return;
+    items.forEach(i => i.classList.remove('highlight'));
+    suggestIdx = (suggestIdx + dir + items.length) % items.length;
+    items[suggestIdx].classList.add('highlight');
+    items[suggestIdx].scrollIntoView({ block: 'nearest' });
+  }
+
+  // ── Scripture search ──────────────────────────────────────────────────────
+
+  async function runScriptureSearch() {
+    const q = scriptureSearch.value.trim();
+    if (!q) { setStatus('Type something to search for.', 'error'); return; }
+
+    setStatus('Searching ' + currentTranslation() + '…', 'loading');
+    const results = await StageApp.searchScripture(currentTranslation(), q);
+
+    if (results.error) { setStatus(results.error, 'error'); return; }
+    if (!results.length) {
+      searchResults.classList.add('hidden');
+      setStatus('No results for "' + q + '".', '');
+      return;
+    }
+
+    searchResults.innerHTML = '';
+    results.forEach(r => {
+      const ref = StageApp.buildReference(r.book, r.chapter, r.verse);
+      const li  = document.createElement('li');
+      li.className = 'search-result';
+      const refSpan = document.createElement('span');
+      refSpan.className = 'search-result-ref';
+      refSpan.textContent = ref;
+      const txtSpan = document.createElement('span');
+      txtSpan.className = 'search-result-text';
+      txtSpan.innerHTML = highlightMatch(r.text, q);
+      li.appendChild(refSpan);
+      li.appendChild(txtSpan);
+      li.addEventListener('click', () => { refInput.value = ref; lookup(ref); });
+      searchResults.appendChild(li);
+    });
+    searchResults.classList.remove('hidden');
+    setStatus(results.length + ' result' + (results.length !== 1 ? 's' : '') + '.', 'success');
+  }
+
+  async function pickRandom() {
+    setStatus('Picking a verse…', 'loading');
+    const r = await StageApp.randomReference(currentTranslation(), randomScope.value);
+    if (r.error) { setStatus(r.error, 'error'); return; }
+    refInput.value = r.reference;
+    await lookup(r.reference);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SONGS  (carried over from the lyric plugin)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function saveSongs() { StageApp.saveSongs(songs); }
+  function getActiveSong() { return songs.find(s => s.id === activeSongId) || null; }
+
+  const STOP_WORDS = new Set([
+    'verse','verse1','verse2','verse3','verse4',
+    'chorus','prechorus','pre-chorus','bridge',
+    'intro','outro','tag','hook','refrain',
+    'repeat','interlude','coda','ending','instrumental',
+  ]);
+
+  function stripStopWords(text) {
+    return text.toLowerCase().split(/\s+/)
+      .filter(w => !STOP_WORDS.has(w.replace(/[^a-z0-9]/g, '')))
+      .join(' ');
+  }
+
+  function lyricExcerpt(song, q) {
+    for (const slide of song.slides) {
+      const idx = slide.toLowerCase().indexOf(q);
+      if (idx === -1) continue;
+      const start = Math.max(0, idx - 30);
+      const end   = Math.min(slide.length, idx + q.length + 30);
+      return highlightMatch(
+        (start > 0 ? '…' : '') + slide.slice(start, end) + (end < slide.length ? '…' : ''), q);
+    }
+    return null;
+  }
+
+  function normalizeTitle(t) { return (t || '').trim().toLowerCase(); }
+
+  function findDuplicateGroups() {
+    const groups = new Map();
+    songs.forEach(s => {
+      const key = normalizeTitle(s.title);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(s);
+    });
+    return [...groups.values()].filter(g => g.length > 1);
+  }
+
+  function renderSongList() {
+    const q = libFilter.toLowerCase().trim();
+    songList.innerHTML = '';
+    const dupIds = new Set(findDuplicateGroups().flat().map(s => s.id));
+
+    const filtered = songs.filter(s => {
+      if (!q) return true;
+      if (libSearchMode === 'lyrics') {
+        return s.slides.some(sl => sl.toLowerCase().includes(q) || stripStopWords(sl).includes(q));
+      }
+      if (s.title.toLowerCase().includes(q)) return true;
+      if (s.altTitle && s.altTitle.toLowerCase().includes(q)) return true;
+      return false;
+    });
+
+    if (filtered.length === 0 && q) {
+      const empty = document.createElement('li');
+      empty.className   = 'song-list-empty';
+      empty.textContent = 'No songs match "' + q + '"';
+      songList.appendChild(empty);
+      return;
+    }
+
+    filtered.forEach(song => {
+      const li = document.createElement('li');
+      li.className = 'song-item' + (song.id === activeSongId ? ' active' : '') +
+                     (dupIds.has(song.id) ? ' is-duplicate' : '');
+
+      const titleMatch = q && libSearchMode === 'title' && song.title.toLowerCase().includes(q);
+      const altMatch   = q && libSearchMode === 'title' && song.altTitle &&
+                         song.altTitle.toLowerCase().includes(q);
+      const lyricMatch = q && libSearchMode === 'lyrics' &&
+                         song.slides.some(sl => sl.toLowerCase().includes(q) ||
+                                                stripStopWords(sl).includes(q));
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'song-item-title';
+      if (titleMatch) titleSpan.innerHTML = highlightMatch(song.title || '(Untitled)', q);
+      else            titleSpan.textContent = song.title || '(Untitled)';
+      if (dupIds.has(song.id)) {
+        const badge = document.createElement('span');
+        badge.className = 'song-item-dup-badge';
+        badge.textContent = 'DUPLICATE';
+        titleSpan.appendChild(badge);
+      }
+
+      const countSpan = document.createElement('span');
+      countSpan.className   = 'song-item-count';
+      countSpan.textContent = song.slides.length + ' slide' + (song.slides.length !== 1 ? 's' : '');
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className   = 'song-item-delete';
+      deleteBtn.type        = 'button';
+      deleteBtn.textContent = '✕';
+      deleteBtn.title       = 'Delete this song';
+      deleteBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (confirm('Delete "' + (song.title || 'Untitled') + '"? This cannot be undone.')) {
+          deleteSongById(song.id);
+        }
+      });
+
+      li.appendChild(titleSpan);
+      li.appendChild(countSpan);
+      li.appendChild(deleteBtn);
+
+      if (song.altTitle) {
+        const alias = document.createElement('span');
+        alias.className = 'song-item-alias';
+        if (altMatch) alias.innerHTML = '📄 ' + highlightMatch(song.altTitle, q);
+        else          alias.textContent = '📄 ' + song.altTitle;
+        li.appendChild(alias);
+      }
+
+      if (lyricMatch) {
+        const excerpt = lyricExcerpt(song, q);
+        if (excerpt) {
+          const span = document.createElement('span');
+          span.className = 'song-item-excerpt';
+          span.innerHTML = excerpt;
+          li.appendChild(span);
+        }
+      }
+
+      li.addEventListener('click', () => loadSongIntoEditor(song.id));
+      songList.appendChild(li);
+    });
+  }
+
+  function loadSongIntoEditor(id) {
+    activeSongId    = id;
+    activeSlideIdx  = null;
+    currentSlideIdx = -1;
+    const song = getActiveSong();
+    if (!song) return;
+    editorTitle.textContent = 'Editor — ' + (song.title || 'Untitled');
+    songTitleInput.value    = song.title || '';
+    btnDeleteSong.disabled  = false;
+    slideTextarea.value     = '';
+    btnUpdateSlide.disabled = true;
+    btnDeleteSlide.disabled = true;
+    renderSlideChips();
+    renderSongList();
+    refreshControls();
+  }
+
+  function renderSlideChips() {
+    slideList.innerHTML = '';
+    const song = getActiveSong();
+    if (!song) return;
+    song.slides.forEach((text, idx) => {
+      const chip = document.createElement('button');
+      chip.className   = 'slide-chip' + (idx === activeSlideIdx ? ' active' : '');
+      chip.textContent = (text.split('\n')[0] || 'Slide ' + (idx + 1)).slice(0, 30);
+      chip.title       = text;
+      chip.addEventListener('click', () => selectSlide(idx));
+      slideList.appendChild(chip);
+    });
+  }
+
+  function selectSlide(idx) {
+    const song = getActiveSong();
+    if (!song) return;
+    activeSlideIdx          = idx;
+    slideTextarea.value     = song.slides[idx] || '';
+    btnUpdateSlide.disabled = false;
+    btnDeleteSlide.disabled = false;
+    renderSlideChips();
+    refreshControls();
+  }
+
+  function newSong() {
+    activeSongId = activeSlideIdx = null;
+    currentSlideIdx = -1;
+    editorTitle.textContent = 'Editor — New Song';
+    songTitleInput.value    = '';
+    slideList.innerHTML     = '';
+    slideTextarea.value     = '';
+    btnDeleteSong.disabled  = true;
+    btnUpdateSlide.disabled = true;
+    btnDeleteSlide.disabled = true;
+    renderSongList();
+    refreshControls();
+  }
+
+  function saveSong() {
+    const title = songTitleInput.value.trim() || 'Untitled';
+    if (!activeSongId) {
+      const id = uid();
+      songs.push({ id, title, slides: [] });
+      activeSongId = id;
+    } else {
+      const song = getActiveSong();
+      if (song) song.title = title;
+    }
+    saveSongs();
+    editorTitle.textContent = 'Editor — ' + title;
+    btnDeleteSong.disabled  = false;
+    renderSongList();
+    renderSlideChips();
+    setStatus('Song saved.', 'success');
+    const saved = getActiveSong();
+    if (saved) saveSongToFolder(saved);
+  }
+
+  function deleteSongById(id) {
+    const song = songs.find(s => s.id === id);
+    if (!song) return;
+    songs = songs.filter(s => s.id !== id);
+    saveSongs();
+    if (id === activeSongId) newSong(); else renderSongList();
+    setStatus('Deleted "' + (song.title || 'Untitled') + '".', '');
+  }
+
+  function clearAllSongs() {
+    if (songs.length === 0) { setStatus('Library is already empty.', ''); return; }
+    const count = songs.length;
+    if (!confirm('Delete ALL ' + count + ' song' + (count !== 1 ? 's' : '') + ' from the library?\n\n' +
+      'This cannot be undone. If you haven\'t backed up, click Cancel, use the ↓ JSON button first, then come back.')) return;
+    if (prompt('To confirm, type DELETE below:') !== 'DELETE') {
+      setStatus('Clear cancelled — nothing was deleted.', ''); return;
+    }
+    songs = []; activeSongId = null;
+    saveSongs(); newSong(); renderSongList();
+    setStatus('Library cleared. Import your songs again to bring them back.', 'success');
+  }
+
+  function removeDuplicates() {
+    const groups = findDuplicateGroups();
+    if (groups.length === 0) { setStatus('No duplicate songs found.', ''); return; }
+    const totalExtra = groups.reduce((n, g) => n + (g.length - 1), 0);
+    if (!confirm('Found ' + groups.length + ' title' + (groups.length !== 1 ? 's' : '') +
+      ' with duplicates (' + totalExtra + ' extra cop' + (totalExtra !== 1 ? 'ies' : 'y') + ').\n\n' +
+      'For each, the version with the most slides will be kept and the rest deleted. This cannot be undone.')) return;
+
+    const idsToRemove = new Set();
+    groups.forEach(group => {
+      let keeper = group[0];
+      for (const s of group) if (s.slides.length > keeper.slides.length) keeper = s;
+      group.forEach(s => { if (s.id !== keeper.id) idsToRemove.add(s.id); });
+    });
+
+    const wasActiveRemoved = activeSongId && idsToRemove.has(activeSongId);
+    songs = songs.filter(s => !idsToRemove.has(s.id));
+    saveSongs();
+    if (wasActiveRemoved) newSong(); else renderSongList();
+    setStatus('Removed ' + idsToRemove.size + ' duplicate song' +
+              (idsToRemove.size !== 1 ? 's' : '') + '.', 'success');
+  }
+
+  function addSlide() {
+    const text = slideTextarea.value;
+    if (!text.trim()) { setStatus('Enter slide text first.', 'error'); return; }
+    if (!activeSongId) {
+      const id = uid();
+      songs.push({ id, title: songTitleInput.value.trim() || 'Untitled', slides: [] });
+      activeSongId = id;
+      btnDeleteSong.disabled = false;
+    }
+    const song = getActiveSong();
+    song.slides.push(text);
+    saveSongs();
+    activeSlideIdx      = song.slides.length - 1;
+    slideTextarea.value = '';
+    renderSlideChips();
+    renderSongList();
+    refreshControls();
+    setStatus('Slide added.', 'success');
+  }
+
+  function updateSlide() {
+    const song = getActiveSong();
+    if (!song || activeSlideIdx === null) return;
+    song.slides[activeSlideIdx] = slideTextarea.value;
+    saveSongs();
+    renderSlideChips();
+    if (isLive && liveTab === 'songs' && currentSlideIdx === activeSlideIdx) resendIfLive();
+    setStatus('Slide updated.', 'success');
+  }
+
+  function deleteSlide() {
+    const song = getActiveSong();
+    if (!song || activeSlideIdx === null) return;
+    song.slides.splice(activeSlideIdx, 1);
+    saveSongs();
+    activeSlideIdx      = null;
+    slideTextarea.value = '';
+    btnUpdateSlide.disabled = true;
+    btnDeleteSlide.disabled = true;
+    renderSlideChips();
+    renderSongList();
+    refreshControls();
+    setStatus('Slide deleted.', '');
+  }
+
+  function navigateSlide(dir) {
+    const song = getActiveSong();
+    if (!song || song.slides.length === 0) return;
+    let target = currentSlideIdx < 0
+      ? (dir > 0 ? 0 : song.slides.length - 1)
+      : currentSlideIdx + dir;
+    target = Math.max(0, Math.min(song.slides.length - 1, target));
+    activeSlideIdx = currentSlideIdx = target;
+    renderSlideChips();
+    refreshControls();
+    sendShow();
+  }
+
+  // ── Output folder ─────────────────────────────────────────────────────────
+
+  function safeFilename(title) {
+    return (title || 'untitled')
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/\s+/g, '_')
+      .replace(/_+/g, '_').slice(0, 80).replace(/^_+|_+$/g, '') || 'song';
+  }
+
+  function songToTxt(song) {
+    const lines = [song.title || 'Untitled'];
+    song.slides.forEach(slide => { lines.push(''); lines.push(slide); });
+    return lines.join('\n');
+  }
+
+  async function writeToFolder(dirHandle, song) {
+    const handle   = await dirHandle.getFileHandle(safeFilename(song.title) + '.txt', { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(songToTxt(song));
+    await writable.close();
+  }
+
+  function updateFolderUI() {
+    if (_outputDirHandle) {
+      outputFolderLabel.textContent = '📂 ' + _outputDirHandle.name;
+      btnSaveAllTxt.disabled        = false;
+      btnClearFolder.style.display  = '';
+    } else {
+      outputFolderLabel.textContent = 'No output folder set';
+      btnSaveAllTxt.disabled        = true;
+      btnClearFolder.style.display  = 'none';
+    }
+  }
+
+  async function setOutputFolder() {
+    if (!window.showDirectoryPicker) { setStatus('This browser cannot pick folders.', 'error'); return; }
+    try {
+      _outputDirHandle = await window.showDirectoryPicker({ mode: 'readwrite', startIn: 'desktop' });
+      updateFolderUI();
+      setStatus('Output folder: ' + _outputDirHandle.name, 'success');
+    } catch (e) { if (e.name !== 'AbortError') setStatus('Could not open that folder.', 'error'); }
+  }
+
+  async function saveAllToFolder() {
+    if (!_outputDirHandle) { setStatus('Set an output folder first.', 'error'); return; }
+    if (songs.length === 0) { setStatus('No songs to save.', 'error'); return; }
+    let saved = 0;
+    for (const song of songs) {
+      try { await writeToFolder(_outputDirHandle, song); saved++; } catch (e) {}
+    }
+    setStatus('Saved ' + saved + ' song' + (saved !== 1 ? 's' : '') + ' to ' + _outputDirHandle.name + '.', 'success');
+  }
+
+  async function saveSongToFolder(song) {
+    if (!_outputDirHandle) return;
+    try { await writeToFolder(_outputDirHandle, song); }
+    catch (e) {
+      if (e.name === 'NotAllowedError') {
+        setStatus('Folder access lost — set the output folder again.', 'error');
+        _outputDirHandle = null;
+        updateFolderUI();
+      }
+    }
+  }
+
+  // ── Import / export ───────────────────────────────────────────────────────
+
+  function exportSongs() {
+    if (songs.length === 0) { setStatus('No songs to export.', 'error'); return; }
+    const blob = new Blob([JSON.stringify({ version: 1, songs }, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'stage-songs-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('Exported ' + songs.length + ' songs.', 'success');
+  }
+
+  function parseTxt(text, filename) {
+    const filenameFallback = filename.replace(/\.txt$/i, '').replace(/_/g, ' ').trim() || 'Imported Song';
+    const norm  = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = norm.split('\n');
+    const labelRe = /^(verse|chorus|bridge|pre-?chorus|outro|intro|tag|hook|refrain|repeat|interlude|coda|ending)\s*\d*\s*:?\s*$/i;
+    const sepRe   = /^[-=]{3,}\s*$/;
+
+    function slidesFromLines(bodyLines) {
+      const slides = []; let current = [];
+      bodyLines.forEach(line => {
+        if (labelRe.test(line.trim())) { if (current.length) { slides.push(current.join('\n')); current = []; } }
+        else if (line.trim() === '')   { if (current.length) { slides.push(current.join('\n')); current = []; } }
+        else current.push(line);
+      });
+      if (current.length) slides.push(current.join('\n'));
+      return slides.length ? slides : [''];
+    }
+
+    const headerRe = /^([a-zA-Z ]+)\s*:\s*(.+)$/;
+    let headerTitle = null, headerEnd = 0;
+    for (let i = 0; i < Math.min(lines.length, 12); i++) {
+      const m = lines[i].match(headerRe);
+      if (m) { if (/^title$/i.test(m[1].trim())) headerTitle = m[2].trim(); headerEnd = i + 1; }
+      else if (lines[i].trim() === '') break;
+      else { headerEnd = 0; break; }
+    }
+
+    // The display title always comes from the filename. An embedded title is
+    // kept as an alias so it still turns up in search.
+    const title = filenameFallback;
+    let altTitle = null, bodyLines;
+
+    if (headerTitle) {
+      altTitle  = filenameFallback.toLowerCase() !== headerTitle.toLowerCase() ? headerTitle : null;
+      bodyLines = lines.slice(headerEnd);
+    } else {
+      const firstNonBlank = lines.findIndex(l => l.trim() !== '');
+      const candidate     = firstNonBlank !== -1 ? lines[firstNonBlank].trim() : '';
+      const nextLine      = firstNonBlank !== -1 ? (lines[firstNonBlank + 1] || '').trim() : '';
+      if (candidate.length > 0 && candidate.length <= 120 && !labelRe.test(candidate)) {
+        altTitle  = filenameFallback.toLowerCase() !== candidate.toLowerCase() ? candidate : null;
+        bodyLines = lines.slice(nextLine === '' ? firstNonBlank + 2 : firstNonBlank + 1);
+      } else {
+        bodyLines = lines;
+      }
+    }
+
+    const sepIdx = bodyLines.findIndex(l => sepRe.test(l));
+    if (sepIdx !== -1) bodyLines = bodyLines.slice(0, sepIdx);
+
+    return [{ title, altTitle, slides: slidesFromLines(bodyLines) }];
+  }
+
+  function parseCsv(text) {
+    const sep  = text.includes('\t') ? '\t' : ',';
+    const rows = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(r => r.trim());
+    if (rows.length < 2) return [];
+
+    function parseRow(line) {
+      const fields = []; let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+        else if (ch === sep && !inQ) { fields.push(cur.trim()); cur = ''; }
+        else cur += ch;
+      }
+      fields.push(cur.trim());
+      return fields;
+    }
+
+    const headers  = parseRow(rows[0]).map(h => h.toLowerCase());
+    const titleIdx = headers.findIndex(h => h === 'title' || h === 'song' || h === 'name');
+    if (titleIdx === -1) return [];
+
+    const result = [];
+    for (let i = 1; i < rows.length; i++) {
+      const cols  = parseRow(rows[i]);
+      const title = cols[titleIdx] || '';
+      if (!title) continue;
+      const lyricsIdx = headers.findIndex(h => h === 'lyrics' || h === 'text' || h === 'words');
+      let slides = [];
+      if (lyricsIdx !== -1 && cols[lyricsIdx]) {
+        slides = cols[lyricsIdx].replace(/\\n/g, '\n').split(/\n\n+/).map(s => s.trim()).filter(Boolean);
+      } else {
+        for (let c = 0; c < cols.length; c++) if (c !== titleIdx && cols[c].trim()) slides.push(cols[c].trim());
+      }
+      if (slides.length === 0) slides.push('');
+      result.push({ title, slides });
+    }
+    return result;
+  }
+
+  function showImportPreview(incoming, sourceLabel) {
+    if (!incoming || incoming.length === 0) { setStatus('No songs found in those files.', 'error'); return; }
+    _pendingImport = incoming.map(s => ({
+      ...s,
+      _exists: songs.some(e => e.title.toLowerCase() === s.title.toLowerCase()),
+      _selected: true,
+    }));
+    const newCount = _pendingImport.filter(s => !s._exists).length;
+    const conCount = _pendingImport.filter(s =>  s._exists).length;
+    importPanelTitle.textContent = 'Import Preview — ' + sourceLabel;
+    importPanelHint.textContent  = _pendingImport.length + ' found · ' + newCount + ' new · ' + conCount + ' already exist';
+    importSongList.innerHTML = '';
+
+    _pendingImport.forEach((song, idx) => {
+      const li = document.createElement('li');
+      li.className = 'import-song-item' + (song._exists ? ' conflict' : '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = !song._exists; cb.id = 'isc-' + idx;
+      cb.addEventListener('change', () => { _pendingImport[idx]._selected = cb.checked; });
+      _pendingImport[idx]._selected = !song._exists;
+      const label = document.createElement('label'); label.htmlFor = 'isc-' + idx;
+      const ts = document.createElement('span'); ts.className = 'isc-title'; ts.textContent = song.title;
+      const ms = document.createElement('span'); ms.className = 'isc-meta';
+      ms.textContent = song.slides.length + ' slides' + (song._exists ? ' · already exists' : '');
+      label.appendChild(ts); label.appendChild(ms);
+      li.appendChild(cb); li.appendChild(label);
+      importSongList.appendChild(li);
+    });
+    importPanel.classList.remove('hidden');
+  }
+
+  function confirmImport() {
+    const toAdd = _pendingImport.filter(s => s._selected);
+    if (toAdd.length === 0) { setStatus('No songs selected.', 'error'); return; }
+    let added = 0, replaced = 0;
+    toAdd.forEach(s => {
+      const existIdx = songs.findIndex(e => e.title.toLowerCase() === s.title.toLowerCase());
+      if (existIdx !== -1) { songs[existIdx] = { ...songs[existIdx], altTitle: s.altTitle, slides: s.slides }; replaced++; }
+      else { songs.push({ id: uid(), title: s.title, altTitle: s.altTitle || null, slides: s.slides }); added++; }
+    });
+    saveSongs(); renderSongList(); closeImportPanel();
+    const parts = [];
+    if (added) parts.push(added + ' added');
+    if (replaced) parts.push(replaced + ' updated');
+    setStatus(parts.join(', ') + '.', 'success');
+  }
+
+  function closeImportPanel() {
+    importPanel.classList.add('hidden');
+    importSongList.innerHTML = '';
+    _pendingImport = [];
+    importFileInput.value = '';
+    importFolderInput.value = '';
+  }
+
+  function readFileAsText(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload  = e => res(e.target.result);
+      r.onerror = () => rej(new Error('Read failed'));
+      r.readAsText(file);
+    });
+  }
+
+  async function processFiles(files, sourceLabel) {
+    const all = [];
+    for (const file of files) {
+      const name = file.name.toLowerCase();
+      try {
+        const text = await readFileAsText(file);
+        if (name.endsWith('.json')) {
+          const data = JSON.parse(text);
+          const arr  = Array.isArray(data) ? data : (data.songs && Array.isArray(data.songs)) ? data.songs : [];
+          arr.forEach(s => { if (s && typeof s.title === 'string' && Array.isArray(s.slides)) all.push(s); });
+        } else if (name.endsWith('.txt')) {
+          all.push(...parseTxt(text, file.name));
+        } else if (name.endsWith('.csv') || name.endsWith('.tsv')) {
+          all.push(...parseCsv(text));
+        }
+      } catch (e) { console.warn('[StageApp] Could not parse', file.name, e); }
+    }
+    showImportPreview(all, sourceLabel);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DISPLAY SETTINGS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function saveCurrentSettings() {
+    StageApp.saveSettings({
+      theme: themeSel.value, position: positionSel.value,
+      fontSize: fontsizeSel.value, animation: animationSel.value,
+      font: fontSel.value, italic: isItalic,
+      opacity: parseInt(opacitySlider.value, 10),
+      scale: parseInt(scaleSlider.value, 10),
+      showCard: showCardCb.checked, showTitle: showTitleCb.checked,
+      showReference: showRefCb.checked,
+      bgImage: bgImageData, bgMode: bgImageData ? 'image' : 'color',
+      language: languageSel.value, translation: translationSel.value,
+      autoShow: autoShowCb.checked,
+      customColors: { bg: colorBg.value, text: colorText.value, accent: colorAccent.value },
+    });
+  }
+
+  function applySettings(s) {
+    themeSel.value     = s.theme     || 'dark';
+    positionSel.value  = s.position  || 'bottom';
+    fontsizeSel.value  = s.fontSize  || 'md';
+    animationSel.value = s.animation || 'fade';
+    fontSel.value      = s.font      || 'Open Sans';
+    isItalic           = !!s.italic;
+    btnItalic.classList.toggle('active', isItalic);
+
+    opacitySlider.value      = s.opacity !== undefined ? s.opacity : 88;
+    opacityValue.textContent = opacitySlider.value + '%';
+    scaleSlider.value        = s.scale !== undefined ? s.scale : 100;
+    scaleValue.textContent   = scaleSlider.value + '%';
+
+    showCardCb.checked  = s.showCard !== false;
+    showTitleCb.checked = s.showTitle !== false;
+    showRefCb.checked   = s.showReference !== false;
+    autoShowCb.checked  = !!s.autoShow;
+
+    const c = s.customColors || StageApp.DEFAULTS.customColors;
+    colorBg.value     = c.bg     || '#0a0a14';
+    colorText.value   = c.text   || '#ffffff';
+    colorAccent.value = c.accent || '#a78bfa';
+
+    if (s.language && StageApp.LANGUAGES.includes(s.language)) languageSel.value = s.language;
+    buildTranslationSelect(s.translation);
+
+    bgImageData = s.bgImage || null;
+    updateBgUI();
+    updateThemeUI();
+  }
+
+  function updateThemeUI() {
+    customColorsSection.style.display = themeSel.value === 'custom' ? '' : 'none';
+  }
+
+  function updateBgUI() {
+    if (bgImageData) {
+      bgImageName.textContent      = 'Custom image in use';
+      btnBgClear.style.display     = '';
+    } else {
+      bgImageName.textContent      = 'None — using theme colour';
+      btnBgClear.style.display     = 'none';
+    }
+  }
+
+  /**
+   * Background images are downscaled before storage. A full-size photo as a
+   * data URL can exceed the localStorage quota on its own, which would stop
+   * every later state update from saving — a failure that would only show up
+   * mid-service.
+   */
+  function loadBgImage(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW  = 1920;
+        const ratio = Math.min(1, maxW / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        try {
+          bgImageData = canvas.toDataURL('image/jpeg', 0.85);
+        } catch (_) {
+          bgImageData = e.target.result;
+        }
+        updateBgUI();
+        saveCurrentSettings();
+        resendIfLive();
+        setStatus('Background image set.', 'success');
+      };
+      img.onerror = () => setStatus('That image could not be read.', 'error');
+      img.src = e.target.result;
+    };
+    reader.onerror = () => setStatus('That image could not be read.', 'error');
+    reader.readAsDataURL(file);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // INIT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  StageApp.FONTS.forEach(f => {
+    const o = document.createElement('option');
+    o.value = f.value; o.textContent = f.label;
+    fontSel.appendChild(o);
+  });
+
+  buildLanguageSelect();
+  buildTranslationSelect('KJV');
+  buildBookSelect();
+  buildQuickBooks();
+
+  songs = StageApp.loadSongs();
+  renderSongList();
+  applySettings(StageApp.loadSettings());
+  updateFolderUI();
+  setTab('scripture');
+  setDotState('off');
+
+  // ── Events: tabs ──────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+  // ── Events: scripture ─────────────────────────────────────────────────────
+  btnLookup.addEventListener('click', () => lookup());
+
+  refInput.addEventListener('input', () => {
+    const val = refInput.value;
+    // Only suggest while the operator is still typing the book name.
+    if (/\d/.test(val)) { hideSuggest(); return; }
+    showSuggest(StageApp.searchBooks(val));
+  });
+
+  refInput.addEventListener('keydown', e => {
+    const open = !bookSuggest.classList.contains('hidden');
+    if (e.key === 'ArrowDown' && open)      { e.preventDefault(); moveSuggest(1); }
+    else if (e.key === 'ArrowUp' && open)   { e.preventDefault(); moveSuggest(-1); }
+    else if (e.key === 'Escape')            { hideSuggest(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const hit = bookSuggest.querySelector('li.highlight');
+      if (open && hit) { refInput.value = hit.textContent + ' '; hideSuggest(); }
+      else lookup();
+    }
+  });
+
+  refInput.addEventListener('blur', () => setTimeout(hideSuggest, 120));
+
+  // ── Quick Reference ───────────────────────────────────────────────────────
+  // Three boxes, no punctuation to type. Focus moves forward on its own as
+  // soon as each box can't take another digit, so a reference is usually
+  // "john" Tab "3" "16" Enter without ever reaching for the colon key.
+  let qrBookIdx = -1;   // index into BIBLE_BOOKS, or -1 when unresolved
+
+  function qrSetHint(msg, isError) {
+    qrHint.textContent = msg;
+    qrHint.classList.toggle('is-error', !!isError);
+  }
+
+  function qrResetHint() {
+    qrSetHint('Type the book, chapter and verse — it jumps between boxes for you.', false);
+  }
+
+  function qrHideSuggest() {
+    qrSuggest.classList.add('hidden');
+    qrSuggest.innerHTML = '';
+  }
+
+  function qrShowSuggest(names) {
+    qrSuggest.innerHTML = '';
+    if (!names.length) { qrHideSuggest(); return; }
+    names.forEach((name, i) => {
+      const li = document.createElement('li');
+      li.textContent = name;
+      if (i === 0) li.classList.add('highlight');
+      // mousedown fires before blur, so the click isn't swallowed
+      li.addEventListener('mousedown', e => {
+        e.preventDefault();
+        qrPickBook(name);
+      });
+      qrSuggest.appendChild(li);
+    });
+    qrSuggest.classList.remove('hidden');
+  }
+
+  function qrMoveSuggest(dir) {
+    const items = [...qrSuggest.querySelectorAll('li')];
+    if (!items.length) return;
+    let i = items.findIndex(el => el.classList.contains('highlight'));
+    items.forEach(el => el.classList.remove('highlight'));
+    i = Math.max(0, Math.min(items.length - 1, (i === -1 ? 0 : i + dir)));
+    items[i].classList.add('highlight');
+  }
+
+  /** Lock in a book name and jump to the chapter box. */
+  function qrPickBook(name) {
+    qrBook.value = name;
+    qrBookIdx    = StageApp.bookIndexOf(name);
+    qrHideSuggest();
+    qrSetHint(qrBookIdx !== -1
+      ? `${StageApp.BIBLE_BOOKS[qrBookIdx][0]} — ${StageApp.BIBLE_BOOKS[qrBookIdx][2]} chapters`
+      : `No book called "${name}".`, qrBookIdx === -1);
+    if (qrBookIdx !== -1) qrChapter.focus();
+  }
+
+  /** Resolve whatever is typed in the book box without moving focus. */
+  function qrResolveBook() {
+    qrBookIdx = StageApp.bookIndexOf(qrBook.value);
+    return qrBookIdx;
+  }
+
+  /** Build the reference and hand it to the existing lookup path. */
+  function qrLookup() {
+    if (qrResolveBook() === -1) {
+      qrSetHint(qrBook.value.trim()
+        ? `No book called "${qrBook.value.trim()}".`
+        : 'Type a book name first.', true);
+      qrBook.focus();
+      return;
+    }
+    const [name, , chapters] = StageApp.BIBLE_BOOKS[qrBookIdx];
+    const ch = parseInt(qrChapter.value, 10);
+    if (!ch || ch < 1 || ch > chapters) {
+      qrSetHint(`${name} has ${chapters} chapter${chapters !== 1 ? 's' : ''}.`, true);
+      qrChapter.focus();
+      qrChapter.select();
+      return;
+    }
+    // The verse box also accepts a range, e.g. 28-30.
+    const raw = qrVerse.value.trim();
+    const m   = raw.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if (!m) {
+      qrSetHint('Enter a verse number, or a range like 28-30.', true);
+      qrVerse.focus();
+      qrVerse.select();
+      return;
+    }
+    qrResetHint();
+    const ref = StageApp.buildReference(name, ch, parseInt(m[1], 10),
+                                        m[2] ? parseInt(m[2], 10) : null);
+    refInput.value = ref;
+    lookup(ref);
+  }
+
+  qrBook.addEventListener('input', () => {
+    qrBookIdx = -1;
+    qrShowSuggest(StageApp.searchBooks(qrBook.value.trim()));
+  });
+
+  qrBook.addEventListener('keydown', e => {
+    const open = !qrSuggest.classList.contains('hidden');
+    if (e.key === 'ArrowDown' && open)    { e.preventDefault(); qrMoveSuggest(1); }
+    else if (e.key === 'ArrowUp' && open) { e.preventDefault(); qrMoveSuggest(-1); }
+    else if (e.key === 'Escape')          { qrHideSuggest(); }
+    else if (e.key === 'Enter' || e.key === 'Tab') {
+      const hit = open ? qrSuggest.querySelector('li.highlight') : null;
+      if (hit) { e.preventDefault(); qrPickBook(hit.textContent); }
+      else if (e.key === 'Enter') { e.preventDefault(); qrPickBook(qrBook.value.trim()); }
+    }
+  });
+
+  qrBook.addEventListener('blur', () => setTimeout(() => {
+    qrHideSuggest();
+    if (qrBook.value.trim() && qrResolveBook() === -1) {
+      qrSetHint(`No book called "${qrBook.value.trim()}".`, true);
+    }
+  }, 120));
+
+  // Chapter: advance as soon as no further digit could make a valid chapter.
+  // In John (21 chapters) typing "3" jumps straight on, while "1" waits
+  // because 10–19 are still possible.
+  qrChapter.addEventListener('input', () => {
+    qrChapter.value = qrChapter.value.replace(/\D/g, '');
+    if (qrResolveBook() === -1) return;
+    const chapters = StageApp.BIBLE_BOOKS[qrBookIdx][2];
+    const n = parseInt(qrChapter.value, 10);
+    if (!n) return;
+    if (n > chapters) {
+      qrSetHint(`${StageApp.BIBLE_BOOKS[qrBookIdx][0]} has ${chapters} chapters.`, true);
+      return;
+    }
+    qrResetHint();
+    if (n * 10 > chapters) qrVerse.focus();
+  });
+
+  qrChapter.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); qrVerse.focus(); }
+    // Backspace on an empty box steps back to the book
+    else if (e.key === 'Backspace' && !qrChapter.value) { qrBook.focus(); }
+  });
+
+  qrVerse.addEventListener('input', () => {
+    qrVerse.value = qrVerse.value.replace(/[^\d-]/g, '');
+  });
+
+  qrVerse.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); qrLookup(); }
+    else if (e.key === 'Backspace' && !qrVerse.value) { qrChapter.focus(); }
+  });
+
+  qrGo.addEventListener('click', qrLookup);
+  qrResetHint();
+
+  languageSel.addEventListener('change', () => { buildTranslationSelect(); saveCurrentSettings(); });
+  translationSel.addEventListener('change', () => {
+    saveCurrentSettings();
+    if (chapterSel.value) onChapterChange();
+    if (currentPlainRef) lookup(currentPlainRef);
+  });
+
+  bookSel.addEventListener('change', onBookChange);
+  chapterSel.addEventListener('change', onChapterChange);
+  btnGoto.addEventListener('click', gotoFromPickers);
+
+  verseText.addEventListener('input', refreshControls);
+  autoShowCb.addEventListener('change', saveCurrentSettings);
+
+  btnScriptureSearch.addEventListener('click', runScriptureSearch);
+  scriptureSearch.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); runScriptureSearch(); }
+  });
+  btnRandom.addEventListener('click', pickRandom);
+
+  // ── Events: songs ─────────────────────────────────────────────────────────
+  libSearch.addEventListener('input', () => { libFilter = libSearch.value.trim(); renderSongList(); });
+
+  document.querySelectorAll('.search-toggle .toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.search-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      libSearchMode = btn.dataset.mode;
+      renderSongList();
+    });
+  });
+
+  btnNewSong.addEventListener('click', newSong);
+  btnSaveSong.addEventListener('click', saveSong);
+  btnDeleteSong.addEventListener('click', () => {
+    const s = getActiveSong();
+    if (s && confirm('Delete "' + s.title + '"?')) deleteSongById(s.id);
+  });
+  btnRemoveDuplicates.addEventListener('click', removeDuplicates);
+  btnClearAllSongs.addEventListener('click', clearAllSongs);
+  btnAddSlide.addEventListener('click', addSlide);
+  btnUpdateSlide.addEventListener('click', updateSlide);
+  btnDeleteSlide.addEventListener('click', deleteSlide);
+  slideTextarea.addEventListener('input', refreshControls);
+
+  btnExport.addEventListener('click', exportSongs);
+  btnImportFile.addEventListener('click', () => importFileInput.click());
+  importFileInput.addEventListener('change', async e => {
+    const f = Array.from(e.target.files);
+    if (f.length) await processFiles(f, f.length === 1 ? f[0].name : f.length + ' files');
+  });
+  btnImportFolder.addEventListener('click', () => importFolderInput.click());
+  importFolderInput.addEventListener('change', async e => {
+    const files = Array.from(e.target.files).filter(f => {
+      const n = f.name.toLowerCase();
+      return n.endsWith('.txt') || n.endsWith('.json') || n.endsWith('.csv') || n.endsWith('.tsv');
+    });
+    if (files.length === 0) { setStatus('No compatible files in that folder.', 'error'); return; }
+    const folderName = files[0].webkitRelativePath.split('/')[0] || 'folder';
+    await processFiles(files, folderName + ' (' + files.length + ' files)');
+  });
+  btnImportConfirm.addEventListener('click', confirmImport);
+  btnImportCancel.addEventListener('click', closeImportPanel);
+  btnImportClose.addEventListener('click', closeImportPanel);
+
+  btnSetFolder.addEventListener('click', setOutputFolder);
+  btnSaveAllTxt.addEventListener('click', saveAllToFolder);
+  btnClearFolder.addEventListener('click', () => {
+    _outputDirHandle = null; updateFolderUI(); setStatus('Output folder cleared.', '');
+  });
+
+  // ── Events: stream controls ───────────────────────────────────────────────
+  btnShow.addEventListener('click', () => {
+    if (activeTab === 'scripture') {
+      if (!verseText.value.trim()) { setStatus('Look up a verse first.', 'error'); return; }
+    } else {
+      const song  = getActiveSong();
+      const lines = (activeSlideIdx !== null && song) ? song.slides[activeSlideIdx] : slideTextarea.value.trim();
+      if (!lines) { setStatus('No slide text to display.', 'error'); return; }
+      currentSlideIdx = activeSlideIdx !== null ? activeSlideIdx : -1;
+    }
+    sendShow();
+    setStatus(activeTab === 'scripture' ? 'Verse is live.' : 'Slide is live.', 'success');
+  });
+
+  btnHide.addEventListener('click', () => {
+    StageApp.send(getCurrentState('hide'));
+    isLive = false;
+    setDotState('hidden');
+    refreshControls();
+  });
+
+  btnClear.addEventListener('click', () => {
+    StageApp.send({ action: 'clear', visible: false });
+    isLive = false; liveTab = null; currentSlideIdx = -1;
+    setDotState('off');
+    refreshControls();
+  });
+
+  btnPrev.addEventListener('click', () => navigate(-1));
+  btnNext.addEventListener('click', () => navigate(1));
+
+  function navigate(dir) {
+    if (activeTab === 'scripture') stepVerse(dir);
+    else navigateSlide(dir);
+  }
+
+  // ── Events: display settings ──────────────────────────────────────────────
+  [themeSel, positionSel, fontsizeSel, animationSel, fontSel].forEach(el =>
+    el.addEventListener('change', () => {
+      if (el === themeSel) updateThemeUI();
+      saveCurrentSettings();
+      resendIfLive();
+    }));
+
+  btnItalic.addEventListener('click', () => {
+    isItalic = !isItalic;
+    btnItalic.classList.toggle('active', isItalic);
+    saveCurrentSettings();
+    resendIfLive();
+  });
+
+  opacitySlider.addEventListener('input', () => {
+    opacityValue.textContent = opacitySlider.value + '%';
+    saveCurrentSettings(); resendIfLive();
+  });
+  scaleSlider.addEventListener('input', () => {
+    scaleValue.textContent = scaleSlider.value + '%';
+    saveCurrentSettings(); resendIfLive();
+  });
+
+  [showCardCb, showTitleCb, showRefCb].forEach(cb =>
+    cb.addEventListener('change', () => { saveCurrentSettings(); resendIfLive(); }));
+
+  [colorBg, colorText, colorAccent].forEach(el =>
+    el.addEventListener('input', () => { saveCurrentSettings(); resendIfLive(); }));
+
+  btnBgImage.addEventListener('click', () => bgImageInput.click());
+  bgImageInput.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (file) loadBgImage(file);
+    bgImageInput.value = '';
+  });
+  btnBgClear.addEventListener('click', () => {
+    bgImageData = null;
+    updateBgUI(); saveCurrentSettings(); resendIfLive();
+    setStatus('Background image removed.', '');
+  });
+
+  // ── Keyboard ──────────────────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+    if (inInput) return;
+    if (e.key === 'Escape') btnHide.click();
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); navigate(1); }
+    else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); navigate(-1); }
+    else if (e.key === ' ') { e.preventDefault(); isLive ? btnHide.click() : btnShow.click(); }
+  });
+
+  StageApp.initChannel('dock', () => {});
+
+} catch (e) {
+  console.error('[StageApp] dock init failed:', e);
+}
+})();
+</script>
+</body>
+</html>
