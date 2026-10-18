@@ -7,11 +7,13 @@ export function normalizeTitle(title) {
 }
 
 export function looksLikeSong(x) {
-  return !!x && typeof x === 'object' && typeof x.title === 'string' && Array.isArray(x.slides);
+  return !!x && typeof x === 'object' && typeof x.title === 'string'
+    && Array.isArray(x.slides) && x.slides.every((s) => typeof s === 'string')
+    && (x.altTitle == null || typeof x.altTitle === 'string');
 }
 
 export function isSongRecord(x) {
-  return looksLikeSong(x) && typeof x.id === 'string' && x.slides.every((s) => typeof s === 'string');
+  return looksLikeSong(x) && typeof x.id === 'string';
 }
 
 export function toSongRecord(x) {

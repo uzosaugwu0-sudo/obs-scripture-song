@@ -11,6 +11,7 @@ export function createLibrary({ local, onModeChange = () => {}, onError = () => 
   let folder = null;
   let mode   = 'local';   // 'local' | 'folder' | 'folder-lost'
   let lyricsChain = Promise.resolve();
+  const dirty = new Set();   // ids saved while no folder was connected; they must win over the folder copy on reconnect
 
   function setMode(next) {
     if (next === mode) return;
@@ -25,13 +26,19 @@ export function createLibrary({ local, onModeChange = () => {}, onError = () => 
   }
 
   async function persist({ write = [], remove = [] } = {}) {
-    if (mode !== 'folder') { local.save(songs); return; }
+    if (mode !== 'folder') {
+      write.forEach((s) => dirty.add(s.id));
+      local.save(songs);
+      return;
+    }
     try {
       for (const song of write) await folder.write(song);
       for (const id of remove) await folder.remove(id);
       await queueLyrics();
+      local.save(songs);          // mirror, so a restart without folder access still shows current songs
     } catch (err) {
       onError(err);
+      write.forEach((s) => dirty.add(s.id));
       local.save(songs);          // nothing is lost: memory and the browser copy both have it
       setMode('folder-lost');
     }
@@ -95,9 +102,12 @@ export function createLibrary({ local, onModeChange = () => {}, onError = () => 
     const { songs: found, errors } = await newFolder.list();
     const titles = new Set(found.map((s) => normalizeTitle(s.title)));
     const ids    = new Set(found.map((s) => s.id));
-    const carried = songs.filter((s) => !titles.has(normalizeTitle(s.title)) && !ids.has(s.id));
+    const edited = new Set(dirty);
+    dirty.clear();
+    // Songs only in memory, plus songs edited while disconnected, are written into the folder.
+    const carried = songs.filter((s) => edited.has(s.id) || (!titles.has(normalizeTitle(s.title)) && !ids.has(s.id)));
     folder = newFolder;
-    songs  = [...found, ...carried];
+    songs  = [...found.filter((s) => !edited.has(s.id)), ...carried];
     setMode('folder');
     await persist({ write: carried });
     return { loaded: found.length, carried: carried.length, errors };

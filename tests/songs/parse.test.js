@@ -64,3 +64,16 @@ describe('parseSongFile', () => {
     expect(() => parseSongFile('bad.json', '{oops')).toThrow();
   });
 });
+
+describe('malformed songs are rejected, not stored', () => {
+  it('requires string slides and a string or null altTitle', () => {
+    expect(looksLikeSong({ title: 'T', slides: [{ text: 'line' }] })).toBe(false);
+    expect(looksLikeSong({ title: 'T', slides: ['x'], altTitle: 5 })).toBe(false);
+    expect(looksLikeSong({ title: 'T', slides: ['x'], altTitle: null })).toBe(true);
+  });
+  it('drops such songs from JSON imports', () => {
+    const good = { title: 'Good', slides: ['x'] };
+    const bad = { title: 'Bad', slides: [{ text: 'line' }] };
+    expect(parseJsonSongs(JSON.stringify([bad, good]))).toEqual([good]);
+  });
+});

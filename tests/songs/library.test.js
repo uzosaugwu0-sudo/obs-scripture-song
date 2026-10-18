@@ -134,3 +134,39 @@ describe('folder mode', () => {
     expect(onModeChange).toHaveBeenCalledWith('folder-lost');
   });
 });
+
+describe('review fixes', () => {
+  it('keeps edits made while the folder was lost when reconnecting', async () => {
+    const dir = createFakeDir({ 'Grace.json': JSON.stringify({ id: 'g1', title: 'Grace', altTitle: null, slides: ['v1'] }) });
+    const { library, folder } = setup({ dir });
+    await library.attachFolder(folder);
+    dir.denied = true;
+    await library.save({ id: 'g1', title: 'Grace', slides: ['EDITED'] });
+    expect(library.mode()).toBe('folder-lost');
+
+    dir.denied = false;
+    await library.attachFolder(createSongFolder(dir));
+    expect(library.list().find((s) => s.id === 'g1').slides).toEqual(['EDITED']);
+    expect(JSON.parse(dir.files.get('Grace.json')).slides).toEqual(['EDITED']);
+  });
+
+  it('keeps edits made after Stop using folder when the same folder is chosen again', async () => {
+    const dir = createFakeDir({ 'Grace.json': JSON.stringify({ id: 'g1', title: 'Grace', altTitle: null, slides: ['v1'] }) });
+    const { library, folder } = setup({ dir });
+    await library.attachFolder(folder);
+    library.detach();
+    await library.save({ id: 'g1', title: 'Grace', slides: ['LOCAL EDIT'] });
+    await library.attachFolder(createSongFolder(dir));
+    expect(library.list().find((s) => s.id === 'g1').slides).toEqual(['LOCAL EDIT']);
+  });
+
+  it('mirrors folder-mode saves to localStorage so a restart without folder access still shows them', async () => {
+    const { library, folder, storage } = setup();
+    await library.attachFolder(folder);
+    await library.save({ title: 'Sunday Song', slides: ['la'] });
+
+    const restarted = createLibrary({ local: createLocalSongStore(storage) });
+    restarted.markLost();
+    expect(restarted.list().map((s) => s.title)).toEqual(['Sunday Song']);
+  });
+});

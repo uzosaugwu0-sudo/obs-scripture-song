@@ -47,3 +47,10 @@ describe('local song store', () => {
     expect(onError).toHaveBeenCalled();
   });
 });
+
+describe('local song store validation', () => {
+  it('drops stored songs whose slides are not strings', () => {
+    const storage = memoryStorage({ [SONGS_KEY]: JSON.stringify([good, { id: 'b', title: 'B', slides: [{ text: 'x' }] }]) });
+    expect(createLocalSongStore(storage).load().map((s) => s.id)).toEqual(['a']);
+  });
+});

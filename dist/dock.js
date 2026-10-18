@@ -765,10 +765,10 @@
     return (title || "").trim().toLowerCase();
   }
   function looksLikeSong(x) {
-    return !!x && typeof x === "object" && typeof x.title === "string" && Array.isArray(x.slides);
+    return !!x && typeof x === "object" && typeof x.title === "string" && Array.isArray(x.slides) && x.slides.every((s) => typeof s === "string") && (x.altTitle == null || typeof x.altTitle === "string");
   }
   function isSongRecord(x) {
-    return looksLikeSong(x) && typeof x.id === "string" && x.slides.every((s) => typeof s === "string");
+    return looksLikeSong(x) && typeof x.id === "string";
   }
   function toSongRecord(x) {
     return {
@@ -787,6 +787,7 @@
     let folder = null;
     let mode = "local";
     let lyricsChain = Promise.resolve();
+    const dirty = /* @__PURE__ */ new Set();
     function setMode(next) {
       if (next === mode) return;
       mode = next;
@@ -800,6 +801,7 @@
     }
     async function persist({ write = [], remove: remove2 = [] } = {}) {
       if (mode !== "folder") {
+        write.forEach((s) => dirty.add(s.id));
         local.save(songs);
         return;
       }
@@ -807,8 +809,10 @@
         for (const song of write) await folder.write(song);
         for (const id of remove2) await folder.remove(id);
         await queueLyrics();
+        local.save(songs);
       } catch (err) {
         onError(err);
+        write.forEach((s) => dirty.add(s.id));
         local.save(songs);
         setMode("folder-lost");
       }
@@ -863,9 +867,11 @@
       const { songs: found, errors } = await newFolder.list();
       const titles = new Set(found.map((s) => normalizeTitle(s.title)));
       const ids = new Set(found.map((s) => s.id));
-      const carried = songs.filter((s) => !titles.has(normalizeTitle(s.title)) && !ids.has(s.id));
+      const edited = new Set(dirty);
+      dirty.clear();
+      const carried = songs.filter((s) => edited.has(s.id) || !titles.has(normalizeTitle(s.title)) && !ids.has(s.id));
       folder = newFolder;
-      songs = [...found, ...carried];
+      songs = [...found.filter((s) => !edited.has(s.id)), ...carried];
       setMode("folder");
       await persist({ write: carried });
       return { loaded: found.length, carried: carried.length, errors };
