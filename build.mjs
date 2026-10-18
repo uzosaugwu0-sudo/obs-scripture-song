@@ -59,6 +59,16 @@ async function buildBibles() {
   }
 }
 
+const DOCK_SHEETS = ['tokens', 'base', 'live-bar', 'tabs', 'fields', 'cards', 'banners'];
+
+/** The dock sheets are small and ordered; the browser gets them as one file. */
+async function buildDockCss() {
+  const parts = [];
+  for (const name of DOCK_SHEETS) parts.push(await readFile(`src/css/${name}.css`, 'utf8'));
+  await mkdir(`${DIST}/css`, { recursive: true });
+  await writeFile(`${DIST}/css/dock.css`, parts.join(String.fromCharCode(10)));
+}
+
 export async function build() {
   await rm(DIST, { recursive: true, force: true });
   await mkdir(`${DIST}/css`, { recursive: true });
@@ -73,7 +83,7 @@ export async function build() {
   }
 
   await cp('src/css/overlay.css', `${DIST}/css/overlay.css`);
-  await cp('src/css/dock.css', `${DIST}/css/dock.css`);
+  await buildDockCss();
   await cp('src/assets/bg1.png', `${DIST}/assets/bg1.png`);
   await buildFonts();
   await buildBibles();

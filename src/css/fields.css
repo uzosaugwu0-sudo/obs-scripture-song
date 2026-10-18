@@ -1,0 +1,38 @@
+.field, .area, .sel { background: var(--inset); border: 1px solid var(--border-strong); border-radius: var(--r-field);
+  padding: 9px 11px; width: 100%; min-width: 0; }
+.area { min-height: 84px; resize: vertical; line-height: 1.4; }
+.sel { background: var(--surface); padding: 7px 9px; width: auto; flex: 1 1 0; }
+.sel.compact { flex: 0 1 auto; max-width: 130px; }
+.field:focus, .area:focus, .sel:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(110, 168, 255, 0.18); }
+.field::placeholder, .area::placeholder { color: var(--faint); }
+
+.smart { position: relative; }
+.sugg { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 15; margin: 0; padding: 0; list-style: none;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-field); overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+.sugg li { padding: 8px 11px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;
+  gap: 8px; cursor: pointer; color: #c8d2e0; }
+.sugg li:last-child { border-bottom: none; }
+.sugg li.hi, .sugg li:hover { background: #1d2a44; color: #ffffff; }
+.sugg small { color: var(--dim); }
+
+.results { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--r-field); }
+.results li { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; overflow-wrap: anywhere; }
+.results li:last-child { border-bottom: none; }
+.results li:hover { background: var(--surface); }
+.results .ref { display: block; color: var(--accent); font-weight: 700; }
+.results mark { background: rgba(110, 168, 255, 0.25); color: var(--text); border-radius: 2px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chips button { padding: 5px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 99px;
+  color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chips button:hover { color: var(--text); }
+.chips button.on { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-bg); }
+
+.seg { display: flex; background: var(--surface); border-radius: var(--r-control); padding: 3px; gap: 2px; }
+.seg button { flex: 1; background: none; border: none; padding: 6px 4px; border-radius: 6px; color: var(--dim); font-weight: 600; }
+.seg button.on { background: var(--accent-bg); color: var(--accent-ink); }
+
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="color"] { width: 44px; height: 28px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: none; }

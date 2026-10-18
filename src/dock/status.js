@@ -1,23 +1,11 @@
-export function createStatus({ statusBar, statusDot, statusLabel, liveKind }) {
+/** The toast-style status line at the bottom of the dock. */
+export function createStatus({ statusBar }) {
   function setStatus(msg, type) {
     statusBar.textContent = msg;
-    statusBar.className   = type ? 'is-' + type : '';
+    statusBar.className = type ? 'status-bar is-' + type : 'status-bar';
     if (msg) setTimeout(() => {
-      if (statusBar.textContent === msg) { statusBar.textContent = ''; statusBar.className = ''; }
+      if (statusBar.textContent === msg) { statusBar.textContent = ''; statusBar.className = 'status-bar'; }
     }, 3500);
   }
-
-  function setDotState(phase, liveTab) {
-    statusDot.className = 'status-dot' +
-      (phase === 'live' ? ' live' : phase === 'hidden' ? ' hidden-state' : '');
-    statusLabel.textContent = phase === 'live' ? 'Live' : phase === 'hidden' ? 'Hidden' : 'Off';
-    if (phase === 'live' && liveTab) {
-      liveKind.className   = 'live-kind ' + (liveTab === 'scripture' ? 'is-verse' : 'is-song');
-      liveKind.textContent = liveTab === 'scripture' ? 'Verse' : 'Song';
-    } else {
-      liveKind.className = 'live-kind hidden';
-    }
-  }
-
-  return { setStatus, setDotState };
+  return { setStatus };
 }
