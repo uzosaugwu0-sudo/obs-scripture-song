@@ -39,3 +39,52 @@ describe('normalizeState', () => {
     expect(normalizeState({ action: 'clear', visible: false, seq: 2 }).action).toBe('clear');
   });
 });
+
+import { THEMES, ANIMATIONS, migrateLegacy } from '../../src/core/state.js';
+
+describe('themes and animations', () => {
+  it('exposes the new vocabulary and defaults', () => {
+    expect(THEMES).toEqual(['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom']);
+    expect(ANIMATIONS).toEqual(['rise', 'wipe', 'lines', 'cut']);
+    expect(DEFAULTS.theme).toBe('frosted');
+    expect(DEFAULTS.animation).toBe('rise');
+  });
+});
+
+describe('migrateLegacy', () => {
+  it.each([
+    ['dark', 'frosted'], ['gold', 'frosted'], ['neon', 'frosted'], ['white', 'frosted-light'],
+    ['sacred-light', 'sacred-light'], ['custom', 'custom'], ['pure', 'pure'], ['frosted', 'frosted'],
+    ['weird', 'frosted'], [undefined, 'frosted'], [42, 'frosted'],
+  ])('maps theme %s to %s', (from, to) => {
+    expect(migrateLegacy({ theme: from }).theme).toBe(to);
+  });
+
+  it.each([
+    ['fade', 'rise'], ['slide', 'rise'], ['none', 'cut'],
+    ['rise', 'rise'], ['wipe', 'wipe'], ['lines', 'lines'], ['cut', 'cut'],
+    ['weird', 'rise'], [undefined, 'rise'], [null, 'rise'],
+  ])('maps animation %s to %s', (from, to) => {
+    expect(migrateLegacy({ animation: from }).animation).toBe(to);
+  });
+
+  it('tolerates being called with nothing', () => {
+    expect(migrateLegacy()).toEqual({ theme: 'frosted', animation: 'rise' });
+  });
+});
+
+describe('normalizeState with legacy values', () => {
+  it('migrates a stored pre-upgrade state so it still renders', () => {
+    const state = normalizeState({ action: 'show', kind: 'verse', seq: 1, theme: 'neon', animation: 'slide' });
+    expect(state.theme).toBe('frosted');
+    expect(state.animation).toBe('rise');
+  });
+  it('replaces unknown values with defaults instead of rejecting the state', () => {
+    const state = normalizeState({ action: 'show', kind: 'song', seq: 2, theme: 'weird', animation: 'spin' });
+    expect(state).toMatchObject({ theme: 'frosted', animation: 'rise' });
+  });
+  it('keeps new values untouched', () => {
+    const state = normalizeState({ action: 'show', kind: 'song', seq: 3, theme: 'pure', animation: 'lines' });
+    expect(state).toMatchObject({ theme: 'pure', animation: 'lines' });
+  });
+});

@@ -1,6 +1,8 @@
 export const STATE_VERSION = 1;
 export const ACTIONS = Object.freeze(['show', 'hide', 'clear']);
 export const KINDS = Object.freeze(['verse', 'song']);
+export const THEMES = Object.freeze(['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom']);
+export const ANIMATIONS = Object.freeze(['rise', 'wipe', 'lines', 'cut']);
 
 export const DEFAULTS = Object.freeze({
   action:        'show',
@@ -8,10 +10,10 @@ export const DEFAULTS = Object.freeze({
   title:         '',        // song title
   body:          '',        // verse text or slide lines
   reference:     '',        // scripture reference
-  theme:         'dark',
+  theme:         'frosted',
   position:      'bottom',
   fontSize:      'md',
-  animation:     'fade',
+  animation:     'rise',
   visible:       false,
   version:       STATE_VERSION,
   seq:           0,         // monotonic; replaces the old timestamp
@@ -26,6 +28,19 @@ export const DEFAULTS = Object.freeze({
   bgImage:       null,
   customColors:  { bg: '#0a0a14', text: '#ffffff', accent: '#a78bfa' },
 });
+
+const LEGACY_THEMES     = Object.freeze({ dark: 'frosted', gold: 'frosted', neon: 'frosted', white: 'frosted-light' });
+const LEGACY_ANIMATIONS = Object.freeze({ fade: 'rise', slide: 'rise', none: 'cut' });
+
+/** Map pre-redesign theme and animation names onto the new set; anything unknown becomes the default. */
+export function migrateLegacy({ theme, animation } = {}) {
+  const t = LEGACY_THEMES[theme] ?? theme;
+  const a = LEGACY_ANIMATIONS[animation] ?? animation;
+  return {
+    theme:     THEMES.includes(t) ? t : DEFAULTS.theme,
+    animation: ANIMATIONS.includes(a) ? a : DEFAULTS.animation,
+  };
+}
 
 /** Next sequence number: always above the last one, and clock-based so it survives restarts. */
 export function nextSeq(lastSeq, nowMs) {
@@ -46,5 +61,5 @@ export function normalizeState(raw) {
   };
   if (!ACTIONS.includes(merged.action)) return null;
   if (!KINDS.includes(merged.kind)) return null;
-  return merged;
+  return { ...merged, ...migrateLegacy(merged) };
 }
