@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stage Display</title>
+  <link rel="stylesheet" href="css/dock.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1><span class="logo-dot"></span> Stage Display</h1>
+    <div class="status-row">
+      <span class="live-kind hidden" id="live-kind"></span>
+      <span class="status-label" id="status-label">Off</span>
+      <div class="status-dot" id="status-dot"></div>
+    </div>
+  </header>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-scripture" data-tab="scripture">
+      <span class="tab-icon">✝</span> Scripture
+    </button>
+    <button class="tab-btn" id="tab-songs" data-tab="songs">
+      <span class="tab-icon">♪</span> Songs
+    </button>
+  </div>
+
+  <div id="library-banner" class="library-banner hidden" role="status"></div>
+
+  <!-- ══════════════════ SCRIPTURE ══════════════════ -->
+  <div class="panel" id="panel-scripture">
+
+    <div class="card card--scripture">
+      <div class="card-title">Verse Lookup</div>
+
+      <div class="ref-wrap">
+        <div class="ref-row">
+          <input type="text" id="ref-input" placeholder="e.g. John 3:16" autocomplete="off" spellcheck="false">
+          <button class="btn btn-primary" id="btn-lookup">Look Up</button>
+        </div>
+        <ul class="book-suggest hidden" id="book-suggest"></ul>
+      </div>
+
+      <!-- Quick reference: three typed boxes, no punctuation, auto-advance -->
+      <div class="qr-wrap">
+        <div class="qr-row">
+          <div class="qr-field qr-field--book">
+            <span class="field-label">Book</span>
+            <input type="text" id="qr-book" placeholder="John" autocomplete="off" spellcheck="false">
+            <ul class="book-suggest hidden" id="qr-book-suggest"></ul>
+          </div>
+          <div class="qr-field">
+            <span class="field-label">Ch</span>
+            <input type="text" id="qr-chapter" placeholder="3" inputmode="numeric" autocomplete="off">
+          </div>
+          <div class="qr-field">
+            <span class="field-label">Verse</span>
+            <input type="text" id="qr-verse" placeholder="16" inputmode="numeric" autocomplete="off">
+          </div>
+          <button class="btn btn-primary qr-go" id="qr-go">Go</button>
+        </div>
+        <div class="qr-hint" id="qr-hint">Type the book, chapter and verse — it jumps between boxes for you.</div>
+      </div>
+
+      <div class="trans-grid">
+        <label><span class="field-label">Language</span>
+          <select id="language-sel"></select>
+        </label>
+        <label><span class="field-label">Translation</span>
+          <select id="translation-sel"></select>
+        </label>
+      </div>
+
+      <div class="cv-row">
+        <label><span class="field-label">Book</span>
+          <select id="book-sel"><option value="">Choose…</option></select>
+        </label>
+        <label><span class="field-label">Chapter</span>
+          <select id="chapter-sel" disabled></select>
+        </label>
+        <label><span class="field-label">Verse</span>
+          <select id="verse-sel" disabled></select>
+        </label>
+        <button class="btn btn-ghost" id="btn-goto" disabled title="Look up this reference">Go</button>
+      </div>
+
+      <div class="quick-books" id="quick-books"></div>
+
+      <div class="inline-checks">
+        <label class="checkbox-row"><input type="checkbox" id="auto-show-cb"><span>Auto Show on lookup</span></label>
+      </div>
+
+      <div class="field-label" style="margin-top:9px;">Verse Text <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);margin-left:4px;">(edit before it goes live)</span></div>
+      <textarea id="verse-text" class="verse-text-area" placeholder="Look up a reference and the text appears here…"></textarea>
+    </div>
+
+    <div class="card card--scripture">
+      <div class="card-title">Search &amp; Random</div>
+
+      <div class="scripture-search-row">
+        <input type="text" id="scripture-search" placeholder="Search words or phrases…" autocomplete="off" spellcheck="false">
+        <button class="btn btn-ghost" id="btn-scripture-search">Search</button>
+      </div>
+      <ul class="search-results hidden" id="search-results"></ul>
+
+      <div class="random-row">
+        <select id="random-scope">
+          <option value="all">Entire Bible</option>
+          <option value="ot">Old Testament</option>
+          <option value="nt">New Testament</option>
+          <option value="gospels">Gospels only</option>
+          <option value="wisdom">Psalms &amp; Proverbs</option>
+        </select>
+        <button class="btn btn-ghost" id="btn-random">🎲 Random Verse</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════ SONGS ══════════════════ -->
+  <div class="panel hidden" id="panel-songs">
+
+    <div class="card card--library">
+      <div class="card-title">Song Library</div>
+      <div class="lib-actions">
+        <input type="text" id="lib-search" class="lib-search" placeholder="Search songs…" autocomplete="off" spellcheck="false">
+        <button class="btn btn-primary" id="btn-new-song">+ New</button>
+      </div>
+      <div class="search-mode-row">
+        <span class="field-label" style="margin-right:5px;">Highlight by</span>
+        <div class="toggle-group search-toggle">
+          <button class="toggle-btn active" data-mode="title">Title</button>
+          <button class="toggle-btn"        data-mode="lyrics">Lyrics</button>
+        </div>
+      </div>
+      <ul class="song-list" id="song-list"></ul>
+      <div class="lib-file-actions">
+        <button class="btn btn-ghost" id="btn-export" title="Export all songs as JSON">↓ JSON</button>
+        <button class="btn btn-ghost" id="btn-import-file" title="Import from a JSON or TXT file">↑ File</button>
+        <button class="btn btn-ghost" id="btn-import-folder" title="Import all TXT/JSON files from a folder">⊞ Folder</button>
+        <button class="btn btn-ghost" id="btn-remove-duplicates" title="Find songs with matching titles and remove the extra copies">⧉ Dupes</button>
+        <button class="btn btn-danger" id="btn-clear-all-songs" title="Delete every song in the library">🗑 Clear All</button>
+        <input type="file" id="import-file-input" accept=".json,.txt,.csv,.tsv" style="display:none;">
+        <input type="file" id="import-folder-input" accept=".json,.txt,.csv,.tsv" multiple webkitdirectory style="display:none;">
+      </div>
+      <div class="output-folder-bar">
+        <div class="output-folder-info">
+          <span>📁</span>
+          <span id="output-folder-label" class="output-folder-label">Songs are stored in this browser only</span>
+        </div>
+        <div class="output-folder-btns">
+          <button class="btn btn-ghost btn-xs" id="btn-set-folder" title="Choose the folder where songs are saved as files">Choose Folder</button>
+          <button class="btn btn-ghost btn-xs" id="btn-reconnect-folder" style="display:none;">Reconnect</button>
+          <button class="btn btn-ghost btn-xs" id="btn-save-all-txt" title="Rewrite lyrics.txt" disabled>Rewrite lyrics.txt</button>
+          <button class="btn-icon" id="btn-clear-folder" title="Stop using this folder" style="display:none;">✕</button>
+        </div>
+      </div>
+      <div id="import-panel" class="import-panel hidden">
+        <div class="import-panel-head">
+          <span id="import-panel-title">Import Preview</span>
+          <button class="btn-icon" id="btn-import-close">✕</button>
+        </div>
+        <p class="import-panel-hint" id="import-panel-hint"></p>
+        <ul class="import-song-list" id="import-song-list"></ul>
+        <div class="import-panel-foot">
+          <button class="btn btn-primary" id="btn-import-confirm">Import Selected</button>
+          <button class="btn btn-ghost"   id="btn-import-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card--editor">
+      <div class="card-title" id="editor-title">Editor — New Song</div>
+      <div style="margin-bottom:7px;">
+        <div class="field-label" style="margin-bottom:3px;">Song Title</div>
+        <input type="text" id="song-title-input" placeholder="e.g. Amazing Grace">
+      </div>
+      <div class="field-label" style="margin-bottom:4px;">Slides <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);margin-left:4px;">(one slide per block)</span></div>
+      <div id="slide-list" class="slide-list"></div>
+      <div class="slide-editor-row">
+        <textarea id="slide-textarea" placeholder="Type slide text here…&#10;Use Enter for new lines within a slide.&#10;Click a slide chip above to edit it."></textarea>
+        <div class="slide-editor-btns">
+          <button class="btn btn-primary" id="btn-add-slide"    title="Add new slide">+</button>
+          <button class="btn btn-ghost"   id="btn-update-slide" title="Update selected slide" disabled>✓</button>
+          <button class="btn btn-danger"  id="btn-delete-slide" title="Delete selected slide" disabled>✕</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;margin-top:7px;">
+        <button class="btn btn-primary" id="btn-save-song" style="flex:1;">Save Song</button>
+        <button class="btn btn-danger"  id="btn-delete-song" disabled>Delete</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════ SHARED ══════════════════ -->
+  <div class="card card--stream">
+    <div class="card-title">Stream Controls</div>
+    <p id="preview-lines">Look up a verse or pick a slide to preview…</p>
+    <div class="controls-row" style="margin-bottom:6px;">
+      <button class="btn btn-prev"  id="btn-prev" disabled>‹</button>
+      <button class="btn btn-show"  id="btn-show" disabled>▶ Show</button>
+      <button class="btn btn-hide"  id="btn-hide" disabled>◼ Hide</button>
+      <button class="btn btn-next"  id="btn-next" disabled>›</button>
+      <button class="btn btn-clear" id="btn-clear">✕</button>
+    </div>
+    <div class="kbd-hint"><kbd>←</kbd><kbd>→</kbd> prev/next · <kbd>Space</kbd> show/hide · <kbd>Esc</kbd> hide</div>
+  </div>
+
+  <div class="card card--display">
+    <div class="card-title">Display Settings</div>
+    <div class="settings-grid" style="margin-bottom:7px;">
+      <label><span class="field-label">Theme</span>
+        <select id="theme-sel">
+          <option value="dark" selected>Dark Stage</option>
+          <option value="gold">Classic Gold</option>
+          <option value="white">Clean White</option>
+          <option value="neon">Neon Live</option>
+          <option value="sacred-light">Sacred Light</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label><span class="field-label">Position</span>
+        <select id="position-sel">
+          <option value="bottom" selected>Bottom</option>
+          <option value="center">Center</option>
+          <option value="top">Top</option>
+        </select>
+      </label>
+      <label><span class="field-label">Font Size</span>
+        <select id="fontsize-sel">
+          <option value="sm">Small</option>
+          <option value="md" selected>Medium</option>
+          <option value="lg">Large</option>
+          <option value="xl">Extra Large</option>
+        </select>
+      </label>
+      <label><span class="field-label">Animation</span>
+        <select id="animation-sel">
+          <option value="fade" selected>Fade</option>
+          <option value="slide">Slide</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="card-divider"></div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Font</div>
+      <div class="font-row">
+        <select id="font-sel"></select>
+        <button class="btn-italic" id="btn-italic" title="Italic">I</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Background Opacity</div>
+      <div class="opacity-row">
+        <input type="range" id="opacity-slider" min="0" max="100" value="88">
+        <span class="opacity-value" id="opacity-value">88%</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Overlay Scale <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);margin-left:4px;">(height only, width unchanged)</span></div>
+      <div class="opacity-row">
+        <input type="range" id="scale-slider" min="50" max="150" step="5" value="100">
+        <span class="opacity-value" id="scale-value">100%</span>
+      </div>
+    </div>
+
+    <div class="inline-checks" style="margin-bottom:7px;">
+      <label class="checkbox-row"><input type="checkbox" id="show-card-cb" checked><span>Show Card</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="show-title-cb" checked><span>Song Title</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="show-ref-cb" checked><span>Verse Reference</span></label>
+    </div>
+
+    <div class="card-divider"></div>
+
+    <div style="margin-bottom:7px;">
+      <div class="field-label" style="margin-bottom:3px;">Background Image</div>
+      <div class="bg-image-row">
+        <button class="btn btn-ghost btn-xs" id="btn-bg-image">Choose Image</button>
+        <button class="btn btn-ghost btn-xs" id="btn-bg-clear" style="display:none;">Remove</button>
+        <span class="bg-image-name" id="bg-image-name">None — using theme colour</span>
+        <input type="file" id="bg-image-input" accept="image/*" style="display:none;">
+      </div>
+    </div>
+
+    <div id="custom-colors-section">
+      <div class="card-divider"></div>
+      <div class="field-label" style="margin-bottom:5px;">Custom Colors</div>
+      <div class="color-row">
+        <div class="color-item"><span>Background</span><input type="color" id="color-bg" value="#0a0a14"></div>
+        <div class="color-item"><span>Main Text</span><input type="color" id="color-text" value="#ffffff"></div>
+        <div class="color-item"><span>Title / Ref</span><input type="color" id="color-accent" value="#a78bfa"></div>
+      </div>
+    </div>
+  </div>
+
+  <details class="diagnostics" id="diagnostics">
+    <summary>Diagnostics <span id="diag-count"></span></summary>
+    <ul id="diag-list"></ul>
+    <button class="btn btn-ghost btn-xs" id="diag-clear" type="button">Clear</button>
+  </details>
+
+  <div id="status-bar"></div>
+</div>
+
+<script src="dock.js"></script>
+</body>
+</html>
