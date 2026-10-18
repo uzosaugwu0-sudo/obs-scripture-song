@@ -43,3 +43,13 @@ describe('BIBLE_BOOKS', () => {
     expect(BIBLE_BOOKS[65]).toEqual(['Revelation', 'Rev', 22]);
   });
 });
+import { normalizeBookName } from '../../src/scripture/books.js';
+
+describe('normalizeBookName', () => {
+  it.each([
+    ['John', 'john'], ['  II  Corinthians.', '2 corinthians'], ['1st John', '1 john'],
+    ['Third John', '3 john'], ['I Samuel', '1 samuel'], ['', ''], [undefined, ''],
+  ])('normalises %j to %j', (input, expected) => {
+    expect(normalizeBookName(input)).toBe(expected);
+  });
+});
