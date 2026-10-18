@@ -7,7 +7,7 @@
 .song-item .del { background: none; border: none; color: var(--faint); }
 .song-item .excerpt { grid-column: 1 / -1; color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge { margin-left: 6px; background: var(--hide-bg); color: var(--hide); border-radius: 4px; padding: 0 5px; font-size: 9px; letter-spacing: 0.06em; }
-.song-name { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song-name { flex: 1 1 0; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .card { text-align: left; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-card);

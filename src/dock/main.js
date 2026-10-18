@@ -9,6 +9,11 @@ import { createScriptureApi } from '../scripture/api.js';
 import { createOfflineProvider } from '../scripture/offline.js';
 import { openKv, idbCache } from '../core/idb.js';
 import { initScriptureTab } from './scripture-tab.js';
+import { createLibrary } from '../songs/library.js';
+import { createLocalSongStore } from '../songs/local-store.js';
+import { initSongsTab } from './songs-tab.js';
+import { initImportPanel } from './import-panel.js';
+import { initLibraryTools } from './library-tools.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
@@ -58,10 +63,27 @@ const VIEWS = ['scripture', 'songs', 'style'];
     tabs.scripture = initScriptureTab({
       session, scripture, store, setStatus: status.setStatus, refresh: () => liveBar.refresh(),
     });
+    let libraryTools = null;
+    const library = createLibrary({
+      local: createLocalSongStore(window.localStorage, report('songs')),
+      onModeChange: () => { if (libraryTools) libraryTools.render(); },
+      onError: report('library'),
+    });
+    tabs.songs = initSongsTab({
+      session, library, setStatus: status.setStatus, refresh: () => liveBar.refresh(),
+    });
+    initImportPanel({
+      library, setStatus: status.setStatus, report: report('songs'), onImported: () => tabs.songs.refreshList(),
+    });
+    libraryTools = initLibraryTools({
+      library, kv: openKv('obs-stage-library'), setStatus: status.setStatus,
+      report: report('library'), onChanged: () => tabs.songs.refreshList(),
+    });
     document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.tab)));
 
     transport.start();
     showView('scripture');
+    await libraryTools.restore();
   } catch (err) {
     diagnostics.log('dock init', err);
     console.error('[dock] init failed:', err);

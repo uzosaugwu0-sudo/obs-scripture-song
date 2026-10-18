@@ -1257,6 +1257,1093 @@
     };
   }
 
+  // src/songs/model.js
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+  function normalizeTitle(title) {
+    return (title || "").trim().toLowerCase();
+  }
+  function looksLikeSong(x) {
+    return !!x && typeof x === "object" && typeof x.title === "string" && Array.isArray(x.slides) && x.slides.every((s) => typeof s === "string") && (x.altTitle == null || typeof x.altTitle === "string");
+  }
+  function isSongRecord(x) {
+    return looksLikeSong(x) && typeof x.id === "string";
+  }
+  function toSongRecord(x) {
+    return {
+      id: x.id,
+      title: x.title,
+      altTitle: x.altTitle ?? null,
+      slides: [...x.slides]
+    };
+  }
+
+  // src/songs/library.js
+  function createLibrary({ local, onModeChange = () => {
+  }, onError = () => {
+  }, uid: uid2 = uid }) {
+    let songs = local.load();
+    let folder = null;
+    let mode = "local";
+    let lyricsChain = Promise.resolve();
+    const dirty = /* @__PURE__ */ new Set();
+    function setMode(next) {
+      if (next === mode) return;
+      mode = next;
+      onModeChange(mode);
+    }
+    function queueLyrics() {
+      const run = lyricsChain.then(() => folder.writeLyrics(songs));
+      lyricsChain = run.catch(() => {
+      });
+      return run;
+    }
+    async function persist({ write = [], remove: remove2 = [] } = {}) {
+      if (mode !== "folder") {
+        write.forEach((s) => dirty.add(s.id));
+        local.save(songs);
+        return;
+      }
+      try {
+        for (const song of write) await folder.write(song);
+        for (const id of remove2) await folder.remove(id);
+        await queueLyrics();
+        local.save(songs);
+      } catch (err) {
+        onError(err);
+        write.forEach((s) => dirty.add(s.id));
+        local.save(songs);
+        setMode("folder-lost");
+      }
+    }
+    const get = (id) => songs.find((s) => s.id === id) || null;
+    async function save(input) {
+      const id = input.id || uid2();
+      const song = toSongRecord({
+        id,
+        title: (input.title || "").trim() || "Untitled",
+        altTitle: input.altTitle ?? null,
+        slides: input.slides || []
+      });
+      songs = songs.some((s) => s.id === id) ? songs.map((s) => s.id === id ? song : s) : [...songs, song];
+      await persist({ write: [song] });
+      return song;
+    }
+    async function removeMany(ids) {
+      const gone = new Set(ids);
+      const existing = songs.filter((s) => gone.has(s.id)).map((s) => s.id);
+      if (!existing.length) return;
+      songs = songs.filter((s) => !gone.has(s.id));
+      await persist({ remove: existing });
+    }
+    const remove = (id) => removeMany([id]);
+    const clearAll = () => removeMany(songs.map((s) => s.id));
+    async function upsertByTitle(incoming) {
+      let added = 0;
+      let replaced = 0;
+      const written = [];
+      let next = songs;
+      for (const item of incoming) {
+        const key = normalizeTitle(item.title);
+        const idx = next.findIndex((s) => normalizeTitle(s.title) === key);
+        if (idx !== -1) {
+          const updated = toSongRecord({ ...next[idx], altTitle: item.altTitle ?? null, slides: item.slides });
+          next = next.map((s, i) => i === idx ? updated : s);
+          written.push(updated);
+          replaced += 1;
+        } else {
+          const created = toSongRecord({ id: uid2(), title: item.title, altTitle: item.altTitle || null, slides: item.slides });
+          next = [...next, created];
+          written.push(created);
+          added += 1;
+        }
+      }
+      songs = next;
+      await persist({ write: written });
+      return { added, replaced };
+    }
+    async function attachFolder(newFolder) {
+      const { songs: found, errors } = await newFolder.list();
+      const titles = new Set(found.map((s) => normalizeTitle(s.title)));
+      const ids = new Set(found.map((s) => s.id));
+      const edited = new Set(dirty);
+      dirty.clear();
+      const carried = songs.filter((s) => edited.has(s.id) || !titles.has(normalizeTitle(s.title)) && !ids.has(s.id));
+      folder = newFolder;
+      songs = [...found.filter((s) => !edited.has(s.id)), ...carried];
+      setMode("folder");
+      await persist({ write: carried });
+      return { loaded: found.length, carried: carried.length, errors };
+    }
+    function markLost() {
+      setMode("folder-lost");
+    }
+    function detach() {
+      folder = null;
+      local.save(songs);
+      setMode("local");
+    }
+    async function rewriteLyrics() {
+      if (mode !== "folder") return;
+      await persist();
+    }
+    return {
+      list: () => songs,
+      get,
+      mode: () => mode,
+      save,
+      remove,
+      removeMany,
+      clearAll,
+      upsertByTitle,
+      attachFolder,
+      markLost,
+      detach,
+      rewriteLyrics
+    };
+  }
+
+  // src/songs/local-store.js
+  var SONGS_KEY = "obs-stage-songs";
+  var LEGACY_SONGS_KEY = "obs-lyric-songs";
+  function createLocalSongStore(storage, onError = () => {
+  }) {
+    function read(key) {
+      try {
+        const raw = storage?.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return null;
+        return parsed.filter(looksLikeSong).map((s) => toSongRecord({ ...s, id: typeof s.id === "string" ? s.id : uid() }));
+      } catch (err) {
+        onError(err);
+        return null;
+      }
+    }
+    function save(songs) {
+      try {
+        storage?.setItem(SONGS_KEY, JSON.stringify(songs));
+      } catch (err) {
+        onError(err);
+      }
+    }
+    function load() {
+      const own = read(SONGS_KEY);
+      if (own) return own;
+      const legacy = read(LEGACY_SONGS_KEY);
+      if (legacy && legacy.length) {
+        save(legacy);
+        return legacy;
+      }
+      return [];
+    }
+    return { load, save };
+  }
+
+  // src/songs/search.js
+  var CONTEXT = 30;
+  var NO_MATCH = Object.freeze({ matched: false, via: null, excerpt: null, score: 0 });
+  function normalizeText(text) {
+    return String(text ?? "").normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase().replace(/['\u2019]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  }
+  function tokenize(query) {
+    const normalized = normalizeText(query);
+    return normalized ? normalized.split(" ") : [];
+  }
+  function excerptFor(slides, tokens) {
+    let best = "";
+    let bestHits = -1;
+    for (const slide of slides) {
+      const normalized = normalizeText(slide);
+      const hits = tokens.filter((t) => normalized.includes(t)).length;
+      if (hits > bestHits) {
+        best = slide;
+        bestHits = hits;
+      }
+    }
+    const lower = best.toLowerCase();
+    const found = tokens.map((t) => lower.indexOf(t)).filter((i) => i >= 0);
+    const idx = found.length ? Math.min(...found) : 0;
+    const start = Math.max(0, idx - CONTEXT);
+    const end = Math.min(best.length, idx + CONTEXT * 2);
+    return (start > 0 ? "..." : "") + best.slice(start, end).trim() + (end < best.length ? "..." : "");
+  }
+  function songMatches(song, query) {
+    const tokens = tokenize(query);
+    if (!tokens.length) return { matched: true, via: null, excerpt: null, score: 0 };
+    const titleText = normalizeText([song.title, song.altTitle].filter((t) => typeof t === "string").join(" "));
+    const slides = (song.slides || []).filter((s) => typeof s === "string");
+    const lyricsText = normalizeText(slides.join(" "));
+    let titleHits = 0;
+    let lyricHits = 0;
+    for (const token of tokens) {
+      const inTitle = titleText.includes(token);
+      const inLyrics = lyricsText.includes(token);
+      if (!inTitle && !inLyrics) return NO_MATCH;
+      if (inTitle) titleHits += 1;
+      if (inLyrics) lyricHits += 1;
+    }
+    const phrase = tokens.join(" ");
+    const allInTitle = titleHits === tokens.length;
+    let score = titleHits * 50 + lyricHits * 10;
+    if (allInTitle) score += 1e3;
+    if (titleText.startsWith(phrase)) score += 500;
+    else if (titleText.includes(phrase)) score += 200;
+    if (lyricsText.includes(phrase)) score += 100;
+    return { matched: true, via: allInTitle ? "title" : "lyrics", excerpt: allInTitle ? null : excerptFor(slides, tokens), score };
+  }
+  function searchSongs(songs, query) {
+    return songs.map((song) => ({ song, ...songMatches(song, query) })).filter((result) => result.matched).sort((a, b) => b.score - a.score || a.song.title.localeCompare(b.song.title));
+  }
+  var escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  var escapeHtml2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function markTokens(text, tokens) {
+    const raw = String(text ?? "");
+    const usable = (tokens || []).filter(Boolean).map(escapeRegExp);
+    if (!usable.length) return escapeHtml2(raw);
+    const parts = raw.split(new RegExp("(" + usable.join("|") + ")", "i"));
+    return parts.map((part, i) => i % 2 === 1 ? "<mark>" + escapeHtml2(part) + "</mark>" : escapeHtml2(part)).join("");
+  }
+
+  // src/songs/duplicates.js
+  function findDuplicateGroups(songs) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const song of songs) {
+      const key = normalizeTitle(song.title);
+      if (!key) continue;
+      groups.set(key, [...groups.get(key) || [], song]);
+    }
+    return [...groups.values()].filter((group) => group.length > 1);
+  }
+  function pickRemovals(groups) {
+    const ids = /* @__PURE__ */ new Set();
+    for (const group of groups) {
+      const keeper = group.reduce((best, s) => s.slides.length > best.slides.length ? s : best, group[0]);
+      for (const s of group) if (s.id !== keeper.id) ids.add(s.id);
+    }
+    return ids;
+  }
+
+  // src/dock/songs-tab.js
+  function initSongsTab({ session, library, setStatus, refresh }) {
+    const search = $("song-search"), listEl = $("song-list"), view = $("song-view"), nameEl = $("song-name"), btnAll = $("btn-all-songs"), btnEdit = $("btn-edit-song"), cardsEl = $("slide-cards"), editor = $("song-editor"), titleInput = $("song-title-input"), slideList = $("slide-list"), slideText = $("slide-textarea"), btnAdd = $("btn-add-slide"), btnUpdate = $("btn-update-slide"), btnDelSlide = $("btn-delete-slide"), btnSave = $("btn-save-song"), btnDelete = $("btn-delete-song"), btnDone = $("btn-done-edit"), btnNew = $("btn-new-song");
+    let activeSongId = null;
+    let activeSlideIdx = null;
+    let shownIdx = -1;
+    let editing = false;
+    let listOpen = true;
+    const getSong = () => library.get(activeSongId);
+    function slideLines() {
+      const song = getSong();
+      if (song && activeSlideIdx !== null) return song.slides[activeSlideIdx] || "";
+      return editing ? slideText.value.trim() : "";
+    }
+    function resetSelection() {
+      activeSongId = null;
+      activeSlideIdx = null;
+      shownIdx = -1;
+      editing = false;
+      listOpen = true;
+    }
+    function renderList() {
+      const query = search.value;
+      const tokens = tokenize(query);
+      const dupIds = new Set(findDuplicateGroups(library.list()).flat().map((s) => s.id));
+      const found = searchSongs(library.list(), query);
+      if (!found.length) {
+        const li = document.createElement("li");
+        li.className = "song-item";
+        li.textContent = query.trim() ? 'No songs match "' + query.trim() + '"' : "No songs yet. Use + New or Import.";
+        listEl.replaceChildren(li);
+        return;
+      }
+      listEl.replaceChildren(...found.map(({ song, excerpt }) => {
+        const li = document.createElement("li");
+        li.className = "song-item";
+        const title = document.createElement("span");
+        title.className = "title";
+        title.innerHTML = markTokens(song.title || "Untitled", tokens);
+        if (dupIds.has(song.id)) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = "DUPLICATE";
+          title.appendChild(badge);
+        }
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = song.slides.length + (song.slides.length === 1 ? " slide" : " slides");
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "del";
+        del.textContent = "\u2715";
+        del.title = "Delete this song";
+        del.setAttribute("aria-label", "Delete " + song.title);
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          removeSong(song);
+        });
+        li.append(title, count, del);
+        if (excerpt) {
+          const note = document.createElement("span");
+          note.className = "excerpt";
+          note.innerHTML = markTokens(excerpt, tokens);
+          li.appendChild(note);
+        }
+        li.addEventListener("click", () => open(song.id));
+        return li;
+      }));
+    }
+    function renderCards(song) {
+      if (!song.slides.length) {
+        const hint = document.createElement("p");
+        hint.className = "faint";
+        hint.textContent = "This song has no slides yet. Press Edit to add some.";
+        cardsEl.replaceChildren(hint);
+        return;
+      }
+      cardsEl.replaceChildren(...song.slides.map((text, i) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "card" + (i === activeSlideIdx ? " cur" : "");
+        const number = document.createElement("small");
+        number.textContent = String(i + 1);
+        card.append(number, document.createTextNode(text));
+        card.addEventListener("click", () => showSlide(i));
+        return card;
+      }));
+    }
+    function renderChips() {
+      const song = getSong();
+      slideList.replaceChildren(...(song ? song.slides : []).map((text, i) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "slide-chip" + (i === activeSlideIdx ? " on" : "");
+        chip.textContent = (text.split("\n")[0] || "Slide " + (i + 1)).slice(0, 30);
+        chip.title = text;
+        chip.addEventListener("click", () => selectSlide(i));
+        return chip;
+      }));
+    }
+    function render() {
+      const song = getSong();
+      const showList = !editing && (!song || listOpen);
+      listEl.classList.toggle("hidden", !showList);
+      search.classList.toggle("hidden", editing);
+      view.classList.toggle("hidden", editing || !song || showList);
+      editor.classList.toggle("hidden", !editing);
+      if (showList) renderList();
+      if (song && !editing) {
+        nameEl.textContent = song.title;
+        renderCards(song);
+      }
+      if (editing) renderChips();
+      btnDelete.disabled = !song;
+      refresh();
+    }
+    function open(id) {
+      activeSongId = id;
+      activeSlideIdx = null;
+      shownIdx = -1;
+      editing = false;
+      listOpen = false;
+      search.value = "";
+      render();
+    }
+    function showSlide(i) {
+      activeSlideIdx = i;
+      shownIdx = i;
+      renderCards(getSong());
+      session.show();
+      setStatus("Slide is live.", "success");
+    }
+    function step(dir) {
+      const song = getSong();
+      if (!song || !song.slides.length) return;
+      let target = shownIdx < 0 ? dir > 0 ? 0 : song.slides.length - 1 : shownIdx + dir;
+      target = Math.max(0, Math.min(song.slides.length - 1, target));
+      activeSlideIdx = target;
+      shownIdx = target;
+      renderCards(song);
+      session.show();
+    }
+    async function removeSong(song) {
+      if (!confirm('Delete "' + (song.title || "Untitled") + '"? This cannot be undone.')) return;
+      await library.remove(song.id);
+      if (song.id === activeSongId) resetSelection();
+      render();
+      setStatus('Deleted "' + (song.title || "Untitled") + '".', "");
+    }
+    function selectSlide(i) {
+      const song = getSong();
+      if (!song) return;
+      activeSlideIdx = i;
+      slideText.value = song.slides[i] || "";
+      btnUpdate.disabled = false;
+      btnDelSlide.disabled = false;
+      renderChips();
+      refresh();
+    }
+    function clearSlideEditor() {
+      activeSlideIdx = null;
+      slideText.value = "";
+      btnUpdate.disabled = true;
+      btnDelSlide.disabled = true;
+    }
+    function startEditing() {
+      const song = getSong();
+      editing = true;
+      listOpen = false;
+      titleInput.value = song ? song.title : "";
+      clearSlideEditor();
+      render();
+    }
+    function startNew() {
+      activeSongId = null;
+      shownIdx = -1;
+      startEditing();
+    }
+    async function saveSong() {
+      const title = titleInput.value.trim() || "Untitled";
+      const existing = getSong();
+      const saved = await library.save({ ...existing || { slides: [] }, id: existing ? existing.id : void 0, title });
+      activeSongId = saved.id;
+      btnDelete.disabled = false;
+      setStatus("Song saved.", "success");
+      render();
+    }
+    async function addSlide() {
+      const text = slideText.value;
+      if (!text.trim()) {
+        setStatus("Enter slide text first.", "error");
+        return;
+      }
+      const existing = getSong();
+      const saved = await library.save({
+        ...existing || { title: titleInput.value.trim() || "Untitled" },
+        id: existing ? existing.id : void 0,
+        slides: [...existing ? existing.slides : [], text]
+      });
+      activeSongId = saved.id;
+      activeSlideIdx = saved.slides.length - 1;
+      slideText.value = "";
+      btnUpdate.disabled = false;
+      btnDelSlide.disabled = false;
+      render();
+      setStatus("Slide added.", "success");
+    }
+    async function updateSlide() {
+      const song = getSong();
+      if (!song || activeSlideIdx === null) return;
+      await library.save({ ...song, slides: song.slides.map((s, i) => i === activeSlideIdx ? slideText.value : s) });
+      renderChips();
+      if (session.isLive && session.liveTab === "songs" && shownIdx === activeSlideIdx) session.resendIfLive();
+      refresh();
+      setStatus("Slide updated.", "success");
+    }
+    async function deleteSlide() {
+      const song = getSong();
+      if (!song || activeSlideIdx === null) return;
+      await library.save({ ...song, slides: song.slides.filter((_, i) => i !== activeSlideIdx) });
+      if (shownIdx === activeSlideIdx) shownIdx = -1;
+      clearSlideEditor();
+      render();
+      setStatus("Slide deleted.", "");
+    }
+    search.addEventListener("focus", () => {
+      listOpen = true;
+      render();
+    });
+    search.addEventListener("input", () => {
+      listOpen = true;
+      render();
+    });
+    btnAll.addEventListener("click", () => {
+      listOpen = true;
+      render();
+    });
+    btnEdit.addEventListener("click", startEditing);
+    btnNew.addEventListener("click", startNew);
+    btnDone.addEventListener("click", () => {
+      editing = false;
+      listOpen = !getSong();
+      render();
+    });
+    btnSave.addEventListener("click", saveSong);
+    btnDelete.addEventListener("click", () => {
+      const song = getSong();
+      if (song) removeSong(song);
+    });
+    btnAdd.addEventListener("click", addSlide);
+    btnUpdate.addEventListener("click", updateSlide);
+    btnDelSlide.addEventListener("click", deleteSlide);
+    slideText.addEventListener("input", refresh);
+    render();
+    return {
+      getContent() {
+        const song = getSong();
+        return { title: song ? song.title : editing ? titleInput.value.trim() : "", body: slideLines() };
+      },
+      preview() {
+        const song = getSong();
+        const lines = slideLines();
+        const where = activeSlideIdx === null ? "no slide picked" : "slide " + (activeSlideIdx + 1) + " of " + (song ? song.slides.length : 0);
+        return {
+          has: lines.length > 0,
+          text: lines || (song ? "Pick a slide" : "Nothing loaded"),
+          sub: song ? song.title + " \xB7 " + where : "Pick a song and a slide",
+          canNav: !!(song && song.slides.length)
+        };
+      },
+      step,
+      markShown() {
+        shownIdx = activeSlideIdx === null ? -1 : activeSlideIdx;
+      },
+      resetPosition() {
+        shownIdx = -1;
+      },
+      /** Re-render after the library changed underneath us (bulk actions, folder attach). */
+      refreshList() {
+        if (activeSongId && !getSong()) resetSelection();
+        render();
+      }
+    };
+  }
+
+  // src/songs/lyrics-file.js
+  var LYRICS_FILENAME = "lyrics.txt";
+  var LYRICS_HEADER = "#OBS-LYRICS-V1";
+  var DELIMITER = "=".repeat(10);
+  var DELIMITER_RE = /^={3,}\s*$/;
+  var BACKSLASH = String.fromCharCode(92);
+  var oneLine = (text) => (text || "").replace(/\s+/g, " ").trim();
+  var escapeLine = (line) => line === "" || line.startsWith(BACKSLASH) || DELIMITER_RE.test(line) ? BACKSLASH + line : line;
+  var unescapeLine = (line) => line.startsWith(BACKSLASH) ? line.slice(1) : line;
+  function buildLyricsFile(songs) {
+    const blocks = songs.map((song) => {
+      const lines = [escapeLine(oneLine(song.title) || "Untitled")];
+      for (const slide of song.slides) {
+        lines.push("");
+        for (const line of slide.replace(/\r\n?/g, "\n").split("\n")) lines.push(escapeLine(line));
+      }
+      return lines.join("\n");
+    });
+    return `${LYRICS_HEADER}
+
+${blocks.join(`
+
+${DELIMITER}
+
+`)}
+`;
+  }
+  function isLyricsFile(text) {
+    const first = text.replace(/^﻿/, "").split(/\r?\n/).find((line) => line.trim() !== "");
+    return first !== void 0 && first.trim() === LYRICS_HEADER;
+  }
+  function parseBlock(lines) {
+    let i = 0;
+    while (i < lines.length && lines[i] === "") i += 1;
+    if (i >= lines.length) return null;
+    const title = unescapeLine(lines[i]);
+    const slides = [];
+    let current = null;
+    for (i += 1; i < lines.length; i += 1) {
+      if (lines[i] === "") {
+        if (current) {
+          slides.push(current.join("\n"));
+          current = null;
+        }
+        continue;
+      }
+      (current ?? (current = [])).push(unescapeLine(lines[i]));
+    }
+    if (current) slides.push(current.join("\n"));
+    return { title, altTitle: null, slides };
+  }
+  function parseLyricsFile(text) {
+    const lines = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").split("\n");
+    const start = lines.findIndex((line) => line.trim() === LYRICS_HEADER) + 1;
+    const songs = [];
+    let block = [];
+    const flush = () => {
+      const song = parseBlock(block);
+      if (song) songs.push(song);
+      block = [];
+    };
+    for (const line of lines.slice(start)) {
+      if (DELIMITER_RE.test(line)) flush();
+      else block.push(line);
+    }
+    flush();
+    return songs;
+  }
+
+  // src/songs/parse.js
+  function parseTxt(text, filename) {
+    const filenameFallback = filename.replace(/\.txt$/i, "").replace(/_/g, " ").trim() || "Imported Song";
+    const norm = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const lines = norm.split("\n");
+    const labelRe = /^(verse|chorus|bridge|pre-?chorus|outro|intro|tag|hook|refrain|repeat|interlude|coda|ending)\s*\d*\s*:?\s*$/i;
+    const sepRe = /^[-=]{3,}\s*$/;
+    function slidesFromLines(bodyLines2) {
+      const slides = [];
+      let current = [];
+      bodyLines2.forEach((line) => {
+        if (labelRe.test(line.trim())) {
+          if (current.length) {
+            slides.push(current.join("\n"));
+            current = [];
+          }
+        } else if (line.trim() === "") {
+          if (current.length) {
+            slides.push(current.join("\n"));
+            current = [];
+          }
+        } else current.push(line);
+      });
+      if (current.length) slides.push(current.join("\n"));
+      return slides.length ? slides : [""];
+    }
+    const headerRe = /^([a-zA-Z ]+)\s*:\s*(.+)$/;
+    let headerTitle = null, headerEnd = 0;
+    for (let i = 0; i < Math.min(lines.length, 12); i++) {
+      const m = lines[i].match(headerRe);
+      if (m) {
+        if (/^title$/i.test(m[1].trim())) headerTitle = m[2].trim();
+        headerEnd = i + 1;
+      } else if (lines[i].trim() === "") break;
+      else {
+        headerEnd = 0;
+        break;
+      }
+    }
+    const title = filenameFallback;
+    let altTitle = null, bodyLines;
+    if (headerTitle) {
+      altTitle = filenameFallback.toLowerCase() !== headerTitle.toLowerCase() ? headerTitle : null;
+      bodyLines = lines.slice(headerEnd);
+    } else {
+      const firstNonBlank = lines.findIndex((l) => l.trim() !== "");
+      const candidate = firstNonBlank !== -1 ? lines[firstNonBlank].trim() : "";
+      const nextLine = firstNonBlank !== -1 ? (lines[firstNonBlank + 1] || "").trim() : "";
+      if (candidate.length > 0 && candidate.length <= 120 && !labelRe.test(candidate)) {
+        altTitle = filenameFallback.toLowerCase() !== candidate.toLowerCase() ? candidate : null;
+        bodyLines = lines.slice(nextLine === "" ? firstNonBlank + 2 : firstNonBlank + 1);
+      } else {
+        bodyLines = lines;
+      }
+    }
+    const sepIdx = bodyLines.findIndex((l) => sepRe.test(l));
+    if (sepIdx !== -1) bodyLines = bodyLines.slice(0, sepIdx);
+    return [{ title, altTitle, slides: slidesFromLines(bodyLines) }];
+  }
+  function parseCsv(text) {
+    const sep = text.includes("	") ? "	" : ",";
+    const rows = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter((r) => r.trim());
+    if (rows.length < 2) return [];
+    function parseRow(line) {
+      const fields = [];
+      let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQ && line[i + 1] === '"') {
+            cur += '"';
+            i++;
+          } else inQ = !inQ;
+        } else if (ch === sep && !inQ) {
+          fields.push(cur.trim());
+          cur = "";
+        } else cur += ch;
+      }
+      fields.push(cur.trim());
+      return fields;
+    }
+    const headers = parseRow(rows[0]).map((h) => h.toLowerCase());
+    const titleIdx = headers.findIndex((h) => h === "title" || h === "song" || h === "name");
+    if (titleIdx === -1) return [];
+    const result = [];
+    for (let i = 1; i < rows.length; i++) {
+      const cols = parseRow(rows[i]);
+      const title = cols[titleIdx] || "";
+      if (!title) continue;
+      const lyricsIdx = headers.findIndex((h) => h === "lyrics" || h === "text" || h === "words");
+      let slides = [];
+      if (lyricsIdx !== -1 && cols[lyricsIdx]) {
+        slides = cols[lyricsIdx].replace(/\\n/g, "\n").split(/\n\n+/).map((s) => s.trim()).filter(Boolean);
+      } else {
+        for (let c = 0; c < cols.length; c++) if (c !== titleIdx && cols[c].trim()) slides.push(cols[c].trim());
+      }
+      if (slides.length === 0) slides.push("");
+      result.push({ title, slides });
+    }
+    return result;
+  }
+  function parseJsonSongs(text) {
+    const data = JSON.parse(text);
+    const list = Array.isArray(data) ? data : data && Array.isArray(data.songs) ? data.songs : [];
+    return list.filter(looksLikeSong);
+  }
+  function parseSongFile(name, text) {
+    const lower = name.toLowerCase();
+    if (lower.endsWith(".json")) return parseJsonSongs(text);
+    if (lower.endsWith(".txt")) return isLyricsFile(text) ? parseLyricsFile(text) : parseTxt(text, name);
+    if (lower.endsWith(".csv") || lower.endsWith(".tsv")) return parseCsv(text);
+    return [];
+  }
+
+  // src/dock/import-panel.js
+  var SONG_FILE = /[.](txt|json|csv|tsv)$/i;
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => reject(new Error("Read failed"));
+      reader.readAsText(file);
+    });
+  }
+  function initImportPanel({ library, setStatus, report: report2, onImported }) {
+    const panel = $("import-panel"), title = $("import-panel-title"), hint = $("import-panel-hint"), listEl = $("import-song-list"), fileInput = $("import-file-input"), folderInput = $("import-folder-input");
+    let pending = [];
+    function close() {
+      panel.classList.add("hidden");
+      listEl.replaceChildren();
+      pending = [];
+      fileInput.value = "";
+      folderInput.value = "";
+    }
+    function showPreview(incoming, sourceLabel) {
+      if (!incoming.length) {
+        setStatus("No songs found in those files.", "error");
+        return;
+      }
+      const existing = new Set(library.list().map((s) => normalizeTitle(s.title)));
+      pending = incoming.map((song) => {
+        const exists = existing.has(normalizeTitle(song.title));
+        return { ...song, exists, selected: !exists };
+      });
+      const newCount = pending.filter((s) => !s.exists).length;
+      title.textContent = "Import preview - " + sourceLabel;
+      hint.textContent = pending.length + " found, " + newCount + " new, " + (pending.length - newCount) + " already exist";
+      listEl.replaceChildren(...pending.map((song, idx) => {
+        const li = document.createElement("li");
+        li.className = song.exists ? "conflict" : "";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = "isc-" + idx;
+        box.checked = song.selected;
+        box.addEventListener("change", () => {
+          pending = pending.map((s, i) => i === idx ? { ...s, selected: box.checked } : s);
+        });
+        const label = document.createElement("label");
+        label.htmlFor = box.id;
+        const name = document.createElement("span");
+        name.className = "isc-title";
+        name.textContent = song.title;
+        const meta = document.createElement("span");
+        meta.className = "isc-meta";
+        meta.textContent = song.slides.length + " slides" + (song.exists ? " - already exists" : "");
+        label.append(name, meta);
+        li.append(box, label);
+        return li;
+      }));
+      panel.classList.remove("hidden");
+    }
+    async function processFiles(files, sourceLabel) {
+      const all = [];
+      const failed = [];
+      for (const file of files) {
+        try {
+          all.push(...parseSongFile(file.name, await readFileAsText(file)));
+        } catch (err) {
+          report2(err);
+          failed.push(file.name);
+        }
+      }
+      const failedMessage = "Could not read " + failed.join(", ") + ".";
+      if (all.length === 0 && failed.length) {
+        setStatus(failedMessage, "error");
+        return;
+      }
+      showPreview(all, sourceLabel);
+      if (failed.length) setStatus(failedMessage, "error");
+    }
+    async function confirmImport() {
+      const chosen = pending.filter((s) => s.selected);
+      if (!chosen.length) {
+        setStatus("No songs selected.", "error");
+        return;
+      }
+      const { added, replaced } = await library.upsertByTitle(
+        chosen.map(({ title: t, altTitle, slides }) => ({ title: t, altTitle, slides }))
+      );
+      close();
+      onImported();
+      const parts = [];
+      if (added) parts.push(added + " added");
+      if (replaced) parts.push(replaced + " updated");
+      setStatus(parts.join(", ") + ".", "success");
+    }
+    $("btn-import-file").addEventListener("click", () => fileInput.click());
+    $("tool-import-folder").addEventListener("click", () => folderInput.click());
+    fileInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length) await processFiles(files, files.length === 1 ? files[0].name : files.length + " files");
+    });
+    folderInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files).filter((f) => SONG_FILE.test(f.name));
+      if (!files.length) {
+        setStatus("No compatible files in that folder.", "error");
+        return;
+      }
+      const folderName = files[0].webkitRelativePath.split("/")[0] || "folder";
+      await processFiles(files, folderName + " (" + files.length + " files)");
+    });
+    $("btn-import-confirm").addEventListener("click", confirmImport);
+    $("btn-import-cancel").addEventListener("click", close);
+    $("btn-import-close").addEventListener("click", close);
+    return { close };
+  }
+
+  // src/songs/folder.js
+  var HANDLE_KEY = "library-dir";
+  var BACKSLASH2 = String.fromCharCode(92);
+  function safeFilename(title) {
+    return (title || "untitled").replace(/[<>:"/|?*\x00-\x1f]/g, "_").split(BACKSLASH2).join("_").replace(/\s+/g, "_").replace(/_+/g, "_").slice(0, 80).replace(/^_+|_+$/g, "") || "song";
+  }
+  function createSongFolder(dirHandle) {
+    const fileOf = /* @__PURE__ */ new Map();
+    const occupied = /* @__PURE__ */ new Set();
+    async function writeText(name, text) {
+      const handle = await dirHandle.getFileHandle(name, { create: true });
+      const writable = await handle.createWritable();
+      try {
+        await writable.write(text);
+        await writable.close();
+      } catch (err) {
+        try {
+          await writable.abort();
+        } catch {
+        }
+        throw err;
+      }
+    }
+    async function removeFile(name) {
+      try {
+        await dirHandle.removeEntry(name);
+      } catch (err) {
+        if (err.name !== "NotFoundError") throw err;
+      }
+    }
+    function unusedName(base, id) {
+      const taken = new Set(occupied);
+      for (const [otherId, name2] of fileOf) if (otherId !== id) taken.add(name2.toLowerCase());
+      let name = `${base}.json`;
+      let n = 2;
+      while (taken.has(name.toLowerCase())) {
+        name = `${base} (${n}).json`;
+        n += 1;
+      }
+      return name;
+    }
+    async function list() {
+      const songs = [];
+      const errors = [];
+      fileOf.clear();
+      occupied.clear();
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind !== "file" || !entry.name.toLowerCase().endsWith(".json")) continue;
+        try {
+          const file = await entry.getFile();
+          const data = JSON.parse(await file.text());
+          if (!isSongRecord(data)) throw new Error("Not a song file");
+          songs.push(toSongRecord(data));
+          fileOf.set(data.id, entry.name);
+        } catch (err) {
+          occupied.add(entry.name.toLowerCase());
+          errors.push({ file: entry.name, message: err.message });
+        }
+      }
+      return { songs, errors };
+    }
+    async function write(song) {
+      const record = toSongRecord(song);
+      const previous = fileOf.get(record.id);
+      const name = unusedName(safeFilename(record.title), record.id);
+      await writeText(name, JSON.stringify(record, null, 2));
+      fileOf.set(record.id, name);
+      if (previous && previous !== name) await removeFile(previous);
+    }
+    async function remove(id) {
+      const name = fileOf.get(id);
+      if (!name) return;
+      await removeFile(name);
+      fileOf.delete(id);
+    }
+    async function writeLyrics(songs) {
+      await writeText(LYRICS_FILENAME, buildLyricsFile(songs));
+    }
+    return { name: dirHandle.name, list, write, remove, writeLyrics };
+  }
+  async function ensurePermission(handle, { request = false } = {}) {
+    if (typeof handle.queryPermission !== "function") return true;
+    const options = { mode: "readwrite" };
+    if (await handle.queryPermission(options) === "granted") return true;
+    if (!request || typeof handle.requestPermission !== "function") return false;
+    return await handle.requestPermission(options) === "granted";
+  }
+  var saveHandle = (kv, handle) => kv.set(HANDLE_KEY, handle);
+  var loadHandle = (kv) => kv.get(HANDLE_KEY);
+
+  // src/dock/library-tools.js
+  var PICKER_ID = "obs-songs";
+  function initLibraryTools({ library, kv, setStatus, report: report2, onChanged }) {
+    const banner = $("library-banner"), btnTools = $("btn-tools"), menu = $("tools-menu"), statusLine = $("library-status"), toolChoose = $("tool-choose-folder"), toolReconnect = $("tool-reconnect"), toolRewrite = $("tool-rewrite-lyrics"), toolStop = $("tool-stop-folder");
+    let pendingHandle = null;
+    function setMenu(open) {
+      menu.classList.toggle("hidden", !open);
+      btnTools.setAttribute("aria-expanded", String(open));
+    }
+    function render() {
+      const mode = library.mode();
+      banner.classList.toggle("hidden", mode === "folder");
+      banner.classList.toggle("is-lost", mode === "folder-lost");
+      banner.textContent = mode === "folder-lost" ? "Lost access to the song folder. Songs are safe in this browser. Open Library tools and choose Reconnect." : "Songs are saved in this browser only. Open Library tools and choose a library folder to keep them as files and a lyrics.txt.";
+      statusLine.textContent = mode === "folder" ? "Folder: " + (pendingHandle ? pendingHandle.name : "connected") : mode === "folder-lost" ? "Folder not connected" : "Songs stored in this browser only";
+      toolReconnect.classList.toggle("hidden", mode !== "folder-lost");
+      toolStop.classList.toggle("hidden", mode !== "folder");
+      toolRewrite.disabled = mode !== "folder";
+      toolChoose.textContent = mode === "folder" ? "Change library folder" : "Choose library folder";
+      onChanged();
+    }
+    async function attach(handle, successMessage) {
+      const result = await library.attachFolder(createSongFolder(handle));
+      pendingHandle = handle;
+      await saveHandle(kv, handle);
+      result.errors.forEach((e) => report2(new Error(e.file + ": " + e.message)));
+      const skipped = result.errors.length ? " " + result.errors.length + " file(s) were skipped (see Diagnostics)." : "";
+      setStatus(successMessage + " " + result.loaded + " song(s) loaded, " + result.carried + " added." + skipped, "success");
+      render();
+    }
+    async function chooseFolder() {
+      if (!window.showDirectoryPicker) {
+        setStatus("This browser cannot pick folders.", "error");
+        return;
+      }
+      try {
+        const handle = await window.showDirectoryPicker({ id: PICKER_ID, mode: "readwrite" });
+        await attach(handle, "Song folder: " + handle.name + ".");
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          report2(err);
+          setStatus("Could not open that folder.", "error");
+        }
+      }
+    }
+    async function reconnect() {
+      try {
+        if (pendingHandle && await ensurePermission(pendingHandle, { request: true })) await attach(pendingHandle, "Reconnected.");
+        else await chooseFolder();
+      } catch (err) {
+        report2(err);
+        setStatus("Could not reconnect to the folder.", "error");
+      }
+    }
+    function exportSongs() {
+      const songs = library.list();
+      if (!songs.length) {
+        setStatus("No songs to export.", "error");
+        return;
+      }
+      const blob = new Blob([JSON.stringify({ version: 1, songs }, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "stage-songs-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setStatus("Exported " + songs.length + " songs.", "success");
+    }
+    async function removeDuplicates() {
+      const groups = findDuplicateGroups(library.list());
+      if (!groups.length) {
+        setStatus("No duplicate songs found.", "");
+        return;
+      }
+      const extra = groups.reduce((n, g) => n + (g.length - 1), 0);
+      if (!confirm("Found " + groups.length + " title" + (groups.length !== 1 ? "s" : "") + " with duplicates (" + extra + " extra cop" + (extra !== 1 ? "ies" : "y") + ").\n\nFor each, the version with the most slides will be kept and the rest deleted. This cannot be undone.")) return;
+      const ids = pickRemovals(groups);
+      await library.removeMany([...ids]);
+      onChanged();
+      setStatus("Removed " + ids.size + " duplicate song" + (ids.size !== 1 ? "s" : "") + ".", "success");
+    }
+    async function clearLibrary() {
+      const count = library.list().length;
+      if (!count) {
+        setStatus("Library is already empty.", "");
+        return;
+      }
+      const inFolder = library.mode() === "folder";
+      if (!confirm("Delete ALL " + count + " song" + (count !== 1 ? "s" : "") + " from the library?\n\n" + (inFolder ? "Their files in the library folder will be deleted too. " : "") + "This cannot be undone. If you have not backed up, click Cancel, use Export all as JSON first, then come back.")) return;
+      if (prompt("To confirm, type DELETE below:") !== "DELETE") {
+        setStatus("Clear cancelled. Nothing was deleted.", "");
+        return;
+      }
+      await library.clearAll();
+      onChanged();
+      setStatus("Library cleared. Import your songs again to bring them back.", "success");
+    }
+    async function restore() {
+      render();
+      try {
+        const handle = await loadHandle(kv);
+        if (!handle) return;
+        pendingHandle = handle;
+        if (await ensurePermission(handle)) await attach(handle, "Song folder restored.");
+        else {
+          library.markLost();
+          render();
+        }
+      } catch (err) {
+        report2(err);
+        library.markLost();
+        render();
+      }
+    }
+    btnTools.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenu(menu.classList.contains("hidden"));
+    });
+    menu.addEventListener("click", () => setMenu(false));
+    document.addEventListener("click", (e) => {
+      if (!menu.contains(e.target) && e.target !== btnTools) setMenu(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setMenu(false);
+    });
+    toolChoose.addEventListener("click", chooseFolder);
+    toolReconnect.addEventListener("click", reconnect);
+    toolRewrite.addEventListener("click", async () => {
+      await library.rewriteLyrics();
+      const ok = library.mode() === "folder";
+      setStatus(ok ? "lyrics.txt rewritten." : "Folder not connected.", ok ? "success" : "error");
+      render();
+    });
+    toolStop.addEventListener("click", () => {
+      library.detach();
+      pendingHandle = null;
+      setStatus("No longer using the folder. Songs stay in this browser.", "");
+      render();
+    });
+    $("tool-export").addEventListener("click", exportSongs);
+    $("tool-duplicates").addEventListener("click", removeDuplicates);
+    $("tool-clear-all").addEventListener("click", clearLibrary);
+    return { restore, render };
+  }
+
   // src/dock/main.js
   var diagnostics = createDiagnostics();
   var report = (context) => (err) => diagnostics.log(context, err);
@@ -1304,9 +2391,37 @@
         setStatus: status.setStatus,
         refresh: () => liveBar.refresh()
       });
+      let libraryTools = null;
+      const library = createLibrary({
+        local: createLocalSongStore(window.localStorage, report("songs")),
+        onModeChange: () => {
+          if (libraryTools) libraryTools.render();
+        },
+        onError: report("library")
+      });
+      tabs.songs = initSongsTab({
+        session,
+        library,
+        setStatus: status.setStatus,
+        refresh: () => liveBar.refresh()
+      });
+      initImportPanel({
+        library,
+        setStatus: status.setStatus,
+        report: report("songs"),
+        onImported: () => tabs.songs.refreshList()
+      });
+      libraryTools = initLibraryTools({
+        library,
+        kv: openKv("obs-stage-library"),
+        setStatus: status.setStatus,
+        report: report("library"),
+        onChanged: () => tabs.songs.refreshList()
+      });
       document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showView(b.dataset.tab)));
       transport.start();
       showView("scripture");
+      await libraryTools.restore();
     } catch (err) {
       diagnostics.log("dock init", err);
       console.error("[dock] init failed:", err);
