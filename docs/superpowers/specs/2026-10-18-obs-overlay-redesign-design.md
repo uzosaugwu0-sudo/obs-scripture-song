@@ -49,7 +49,7 @@ The foundation phase made the dock and overlay tested modules with file-backed s
 
 **Songs tab**
 - The browser-only / folder-lost banner (as today) at the top.
-- A search box: matches titles and lyrics; matching lyric excerpts are highlighted as today.
+- One universal search box: type a song title or any part of a lyric. A song matches when every word typed appears somewhere in its title, alternative title or lyrics, in any order; partial words work (`amaz`); punctuation and accents are ignored (`dont know` finds "don't know", `senor` finds "Señor"). Results are ranked: all words in the title first (a title starting with the query highest), then partial title hits, then lyric-only matches, ties alphabetical. A lyric match shows the matching line with the typed words highlighted. With an empty box the list is every song, alphabetical.
 - The song list (compact, with slide counts and the DUPLICATE badge) shows while no song is open or while the search box is focused.
 - An opened song shows its name, an `Edit` button, and its slides as two-column cards (number and text). Clicking a card makes it the current slide and puts it on screen. The current slide is outlined. Left/Right step through slides as today.
 - `Edit` replaces the cards with the editor (title, slide list, slide textarea, add/update/delete slide, Save, Delete song) until `Done`.
@@ -155,7 +155,7 @@ Shortcuts; the live-content rule (style changes re-send the live tab's content a
 
 ## 8. Testing
 
-- **Unit:** `suggestBooks` and `classifyInput` (references, ranges, numbered books, ambiguous `jo`, unique book, multi-word search, blank, digits-only); `splitLines` (song slides, verse clauses, short-piece merging, more than 8 pieces, empty); `migrateLegacy` and its use in `normalizeState` and `loadSettings` (every row of the table, unknown values, missing values); existing suites stay green.
+- **Unit:** song search (`normalizeText`, `songMatches`, `searchSongs`, `markTokens`: any word order, partial words, punctuation and accents, ranking, excerpts, non-Latin text, malformed slides); `suggestBooks` and `classifyInput` (references, ranges, numbered books, ambiguous `jo`, unique book, multi-word search, blank, digits-only); `splitLines` (song slides, verse clauses, short-piece merging, more than 8 pieces, empty); `migrateLegacy` and its use in `normalizeState` and `loadSettings` (every row of the table, unknown values, missing values); existing suites stay green.
 - **Browser (Playwright, chromium):** the 13 existing tests updated for the new markup; at a 380x700 viewport, the live bar is fully visible with no scroll on each tab and `document.scrollWidth <= 380`; Show and Hide are at least 40px tall; each of the 5 themes and 4 animations renders on the overlay for a verse and a song, including a content change while visible; the smart box handles `joh` -> suggestion, `John 3:16` -> verse, `loved the world` -> search results (mocked API); slide cards put the clicked slide on screen; Edit drawer add/update/delete; Library tools menu actions; a pre-upgrade stored state and saved settings still load.
 - **Manual in OBS 28+:** Frosted blur and Soft rise look right over real video; Pure Type legible over bright scenes; the narrow dock; folder reconnect still works.
 - Coverage stays at or above 80% on the logic modules.
