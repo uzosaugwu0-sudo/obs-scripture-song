@@ -13,7 +13,7 @@ This replaces the separate Bible Verse and Lyric Display plugins. One dock, one 
 ## What you need
 
 - **OBS Studio 28 or newer** ([free at obsproject.com](https://obsproject.com))
-- **An internet connection** when looking up verses. Song lyrics are stored on your computer and need no connection.
+- **An internet connection** only for translations other than KJV and WEB. KJV and WEB are bundled and work offline, any verse you have looked up before is remembered, and song lyrics are stored on your computer.
 - The plugin folder saved somewhere permanent
 
 ---
@@ -26,17 +26,17 @@ This replaces the separate Bible Verse and Lyric Display plugins. One dock, one 
 2. Extract it (right-click ▸ **Extract All** on Windows, or double-click on Mac)
 3. Move the extracted folder somewhere permanent, such as **Documents**
 
-> ⚠️ Don't rename or move files inside the folder afterwards. `index.html` and `overlay.html` both need the `assets` folder sitting next to them.
+> ⚠️ Keep the whole `dist` folder together. `dock.html` and `overlay.html` need the other files inside it (scripts, styles, fonts, Bible data).
 
 ### Step 2 — Add the control panel
 
 1. In OBS: **Docks ▸ Custom Browser Docks…**
 2. **Dock Name:** `Scripture & Song`
-3. **URL:** the full path to `index.html`, starting with `file:///`
-   - **Windows:** Shift + right-click `index.html` ▸ **Copy as path**, paste it, swap `\` for `/`, and put `file:///` on the front
-     `file:///C:/Users/YourName/Documents/obs-scripture-song/index.html`
-   - **Mac:** right-click `index.html`, hold Option, **Copy "index.html" as Pathname**, then add `file://`
-     `file:///Users/YourName/Documents/obs-scripture-song/index.html`
+3. **URL:** the full path to `dock.html` (inside the `dist` folder), starting with `file:///`
+   - **Windows:** Shift + right-click `dock.html` ▸ **Copy as path**, paste it, swap `\` for `/`, and put `file:///` on the front
+     `file:///C:/Users/YourName/Documents/obs-scripture-song/dist/dock.html`
+   - **Mac:** right-click `dock.html`, hold Option, **Copy "dock.html" as Pathname**, then add `file://`
+     `file:///Users/YourName/Documents/obs-scripture-song/dist/dock.html`
 4. Click **Apply**, then drag the panel wherever you like in your OBS layout
 
 ### Step 3 — Add the overlay
@@ -45,7 +45,7 @@ This replaces the separate Bible Verse and Lyric Display plugins. One dock, one 
 2. Name it `Scripture & Song Overlay`, click **OK**
 3. In the properties window:
    - Tick **Local file**
-   - **Browse** to `overlay.html`
+   - **Browse** to `dist/overlay.html`
    - **Width** `1920`, **Height** `1080`
    - Untick **Shutdown source when not visible** ← important
    - Untick **Refresh browser when scene becomes active** ← important
@@ -68,7 +68,7 @@ Type a reference and press **Enter**, or use the book / chapter / verse dropdown
 - **Search** — find a verse by wording when you can't remember the reference
 - **Random** — pick from the whole Bible, Old or New Testament, the Gospels, or Psalms and Proverbs
 - **Auto Show** — send each verse to the stream the moment it's looked up
-- **31 translations** in English, Portuguese, Russian and Chinese, filtered by the language dropdown
+- **31 translations** in English, Portuguese, Russian and Chinese, filtered by the language dropdown. KJV and WEB work with no internet; any verse looked up before is remembered offline.
 
 ### Songs tab
 
@@ -76,7 +76,7 @@ Type a reference and press **Enter**, or use the book / chapter / verse dropdown
 - **Slides** — one block of text per slide. Click a chip to edit it, then use ← / → to move through them live.
 - **Import** — from `.json`, `.txt`, `.csv` or `.tsv`, one file or a whole folder at once, with a preview showing what's new and what already exists
 - **Duplicates** — find songs with matching titles and keep the fullest copy
-- **Output folder** — set one and every saved song is also written out as a `.txt` backup
+- **Library folder** — choose a folder once and every song is saved there as its own `.json` file, plus a `lyrics.txt` holding every song in one text file. Back it up or sync it like any other folder. `lyrics.txt` can be imported again with **↑ File**.
 - **Export** — save the whole library as JSON
 
 Your existing Lyric Display library is picked up automatically the first time you open the plugin, so you don't need to re-import anything.
@@ -105,15 +105,32 @@ One deliberate behaviour worth knowing: if a song is live and you switch to the 
 
 **Verse lookups fail.** OBS needs internet access. Lookups time out after 10 seconds rather than hanging, so an error message means the request genuinely didn't come back.
 
-**Sacred Light shows a plain card.** It needs `assets/bg1.png`. Check the file is still there.
+**Sacred Light shows a plain card.** It needs `dist/assets/bg1.png`. Check the file is still there.
 
-**Songs disappeared.** The library lives in the browser's local storage for this dock. Use **↓ JSON** regularly to keep a backup, and set an output folder so every save also writes a `.txt`.
+**Songs disappeared.** If the dock shows a yellow banner, songs are only in this browser: choose a library folder so they are kept as files. If it shows a red banner, OBS lost access to the folder; click **Reconnect**. Use **↓ JSON** now and then for a backup copy.
+
+**Something is not working and the message is unclear.** Open **Diagnostics** at the bottom of the dock and read the last few lines; it lists recent errors with the time.
 
 ---
 
 ## A note on song lyrics
 
 This tool displays lyrics you type in or import; it doesn't fetch or supply any. Reproducing lyrics for a copyrighted worship song on a livestream normally requires a streaming licence — most churches cover this through CCLI. Public-domain hymns are fine without one.
+
+---
+
+## Development
+
+The dock and overlay are built from the modules in `src/` into the `dist/` folder, which is committed so the GitHub ZIP works without any tools.
+
+```
+npm install
+npm test            # unit tests
+npm run build       # rebuild dist/
+npm run smoke       # browser tests (builds first with npm run build)
+```
+
+Rebuild with `npm run build` and commit `dist/` together with any change to `src/`.
 
 ---
 
