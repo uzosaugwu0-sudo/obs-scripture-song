@@ -14,6 +14,7 @@ import { createLocalSongStore } from '../songs/local-store.js';
 import { initSongsTab } from './songs-tab.js';
 import { initImportPanel } from './import-panel.js';
 import { initLibraryTools } from './library-tools.js';
+import { initStyleTab } from './style-tab.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
@@ -21,6 +22,19 @@ const report = (context) => (err) => diagnostics.log(context, err);
 const EMPTY_SCRIPTURE = { body: '', reference: '' };
 const EMPTY_SONG = { title: '', body: '' };
 const VIEWS = ['scripture', 'songs', 'style'];
+
+function wireDiagnosticsPanel() {
+  const list = $('diag-list'), count = $('diag-count');
+  diagnostics.subscribe((entries) => {
+    count.textContent = entries.length ? '(' + entries.length + ')' : '';
+    list.replaceChildren(...entries.slice().reverse().map((entry) => {
+      const li = document.createElement('li');
+      li.textContent = entry.at.slice(11, 19) + '  ' + entry.context + ': ' + entry.message;
+      return li;
+    }));
+  });
+  $('diag-clear').addEventListener('click', () => diagnostics.clear());
+}
 
 (async () => {
   try {
@@ -81,6 +95,8 @@ const VIEWS = ['scripture', 'songs', 'style'];
     });
     document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.tab)));
 
+    wireDiagnosticsPanel();
+    initStyleTab({ session, store, setStatus: status.setStatus, report: report('settings') });
     transport.start();
     showView('scripture');
     await libraryTools.restore();

@@ -2344,12 +2344,167 @@ ${DELIMITER}
     return { restore, render };
   }
 
+  // src/core/fonts.js
+  var FONTS = [
+    { label: "Open Sans (Default)", value: "Open Sans" },
+    { label: "Atkinson Hyperlegible", value: "Atkinson Hyperlegible" },
+    { label: "Lato", value: "Lato" },
+    { label: "Montserrat", value: "Montserrat" },
+    { label: "Raleway", value: "Raleway" },
+    { label: "Lora", value: "Lora" },
+    { label: "EB Garamond", value: "EB Garamond" },
+    { label: "Cormorant Garamond", value: "Cormorant Garamond" },
+    { label: "Crimson Text", value: "Crimson Text" },
+    { label: "Playfair Display", value: "Playfair Display" },
+    { label: "Cinzel", value: "Cinzel" },
+    { label: "Georgia", value: "Georgia" }
+  ];
+
+  // src/overlay/style-math.js
+  var CARD_DEFAULT = { frosted: true, "frosted-light": true, pure: false, "sacred-light": true, custom: true };
+  function defaultShowCard(theme) {
+    return CARD_DEFAULT[theme] ?? true;
+  }
+
+  // src/dock/segmented.js
+  function bindSegmented(container, { get, set }) {
+    const buttons = [...container.querySelectorAll("button[data-value]")];
+    function paint() {
+      const current = get();
+      buttons.forEach((button) => {
+        const on = button.dataset.value === current;
+        button.classList.toggle("on", on);
+        button.setAttribute("aria-pressed", String(on));
+      });
+    }
+    buttons.forEach((button) => button.addEventListener("click", () => {
+      set(button.dataset.value);
+      paint();
+    }));
+    paint();
+    return { paint };
+  }
+
+  // src/dock/bg-image.js
+  var MAX_WIDTH = 1920;
+  var JPEG_QUALITY = 0.85;
+  var UNREADABLE = "That image could not be read.";
+  function readBackgroundImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(UNREADABLE));
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onerror = () => reject(new Error(UNREADABLE));
+        img.onload = () => {
+          const ratio = Math.min(1, MAX_WIDTH / img.width);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * ratio);
+          canvas.height = Math.round(img.height * ratio);
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          try {
+            resolve(canvas.toDataURL("image/jpeg", JPEG_QUALITY));
+          } catch {
+            resolve(e.target.result);
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // src/dock/style-tab.js
+  function initStyleTab({ session, store, setStatus, report: report2 }) {
+    const fontSel = $("font-sel"), btnItalic = $("btn-italic"), opacitySlider = $("opacity-slider"), opacityValue = $("opacity-value"), scaleSlider = $("scale-slider"), scaleValue = $("scale-value"), showCardCb = $("show-card-cb"), showTitleCb = $("show-title-cb"), showRefCb = $("show-ref-cb"), customSection = $("custom-colors-section"), colorBg = $("color-bg"), colorText = $("color-text"), colorAccent = $("color-accent"), btnBgImage = $("btn-bg-image"), btnBgClear = $("btn-bg-clear"), bgName = $("bg-image-name"), bgInput = $("bg-image-input");
+    FONTS.forEach((font) => {
+      const option = document.createElement("option");
+      option.value = font.value;
+      option.textContent = font.label;
+      fontSel.appendChild(option);
+    });
+    function sync() {
+      const s = store.get();
+      fontSel.value = s.font;
+      btnItalic.setAttribute("aria-pressed", String(!!s.italic));
+      btnItalic.classList.toggle("on", !!s.italic);
+      opacitySlider.value = String(s.opacity);
+      opacityValue.textContent = s.opacity + "%";
+      scaleSlider.value = String(s.scale);
+      scaleValue.textContent = s.scale + "%";
+      showCardCb.checked = s.showCard !== false;
+      showTitleCb.checked = s.showTitle !== false;
+      showRefCb.checked = s.showReference !== false;
+      customSection.classList.toggle("hidden", s.theme !== "custom");
+      colorBg.value = s.customColors.bg;
+      colorText.value = s.customColors.text;
+      colorAccent.value = s.customColors.accent;
+      btnBgClear.classList.toggle("hidden", !s.bgImage);
+      bgName.textContent = s.bgImage ? "Custom image in use" : "None, using the theme colour";
+      segments.forEach((segment) => segment.paint());
+    }
+    function change(patch) {
+      store.update(patch);
+      session.resendIfLive();
+      sync();
+    }
+    const segments = [
+      bindSegmented($("theme-swatches"), {
+        get: () => store.get().theme,
+        set: (theme) => change({ theme, showCard: defaultShowCard(theme) })
+      }),
+      bindSegmented($("anim-seg"), { get: () => store.get().animation, set: (animation) => change({ animation }) }),
+      bindSegmented($("position-seg"), { get: () => store.get().position, set: (position) => change({ position }) }),
+      bindSegmented($("size-seg"), { get: () => store.get().fontSize, set: (fontSize) => change({ fontSize }) })
+    ];
+    fontSel.addEventListener("change", () => change({ font: fontSel.value }));
+    btnItalic.addEventListener("click", () => change({ italic: !store.get().italic }));
+    opacitySlider.addEventListener("input", () => change({ opacity: Number(opacitySlider.value) }));
+    scaleSlider.addEventListener("input", () => change({ scale: Number(scaleSlider.value) }));
+    showCardCb.addEventListener("change", () => change({ showCard: showCardCb.checked }));
+    showTitleCb.addEventListener("change", () => change({ showTitle: showTitleCb.checked }));
+    showRefCb.addEventListener("change", () => change({ showReference: showRefCb.checked }));
+    [colorBg, colorText, colorAccent].forEach((input) => input.addEventListener("input", () => {
+      change({ customColors: { bg: colorBg.value, text: colorText.value, accent: colorAccent.value } });
+    }));
+    btnBgImage.addEventListener("click", () => bgInput.click());
+    bgInput.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      bgInput.value = "";
+      if (!file) return;
+      try {
+        change({ bgImage: await readBackgroundImage(file) });
+        setStatus("Background image set.", "success");
+      } catch (err) {
+        report2(err);
+        setStatus(err.message, "error");
+      }
+    });
+    btnBgClear.addEventListener("click", () => {
+      change({ bgImage: null });
+      setStatus("Background image removed.", "");
+    });
+    sync();
+  }
+
   // src/dock/main.js
   var diagnostics = createDiagnostics();
   var report = (context) => (err) => diagnostics.log(context, err);
   var EMPTY_SCRIPTURE = { body: "", reference: "" };
   var EMPTY_SONG = { title: "", body: "" };
   var VIEWS = ["scripture", "songs", "style"];
+  function wireDiagnosticsPanel() {
+    const list = $("diag-list"), count = $("diag-count");
+    diagnostics.subscribe((entries) => {
+      count.textContent = entries.length ? "(" + entries.length + ")" : "";
+      list.replaceChildren(...entries.slice().reverse().map((entry) => {
+        const li = document.createElement("li");
+        li.textContent = entry.at.slice(11, 19) + "  " + entry.context + ": " + entry.message;
+        return li;
+      }));
+    });
+    $("diag-clear").addEventListener("click", () => diagnostics.clear());
+  }
   (async () => {
     try {
       let showView = function(name) {
@@ -2419,6 +2574,8 @@ ${DELIMITER}
         onChanged: () => tabs.songs.refreshList()
       });
       document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showView(b.dataset.tab)));
+      wireDiagnosticsPanel();
+      initStyleTab({ session, store, setStatus: status.setStatus, report: report("settings") });
       transport.start();
       showView("scripture");
       await libraryTools.restore();
