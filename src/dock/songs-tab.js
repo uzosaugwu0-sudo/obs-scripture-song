@@ -15,12 +15,28 @@ export function initSongsTab({ session, library, setStatus, refresh }) {
   let shownIdx = -1;           // the slide last put on screen, -1 when none
   let editing = false;
   let listOpen = true;
+  let discardArmed = false;   // true after Done warned about unsaved input
 
   const getSong = () => library.get(activeSongId);
 
+  // While a slide of this song is live, re-sends follow the slide that is ON SCREEN, not the one selected in the editor.
+  function contentIndex() {
+    return session.isLive && session.liveTab === 'songs' && shownIdx >= 0 ? shownIdx : activeSlideIdx;
+  }
+
+  function hasUnsavedEdits() {
+    const song = getSong();
+    const typedTitle = titleInput.value.trim();
+    const titleChanged = song ? (typedTitle || 'Untitled') !== song.title : typedTitle !== '';
+    const text = slideText.value;
+    const slideChanged = text.trim() !== '' && !(song && activeSlideIdx !== null && song.slides[activeSlideIdx] === text);
+    return titleChanged || slideChanged;
+  }
+
   function slideLines() {
     const song = getSong();
-    if (song && activeSlideIdx !== null) return song.slides[activeSlideIdx] || '';
+    const idx = contentIndex();
+    if (song && idx !== null) return song.slides[idx] || '';
     return editing ? slideText.value.trim() : '';
   }
 
@@ -251,13 +267,24 @@ export function initSongsTab({ session, library, setStatus, refresh }) {
   btnAll.addEventListener('click', () => { listOpen = true; render(); });
   btnEdit.addEventListener('click', startEditing);
   btnNew.addEventListener('click', startNew);
-  btnDone.addEventListener('click', () => { editing = false; listOpen = !getSong(); render(); });
+  btnDone.addEventListener('click', () => {
+    if (hasUnsavedEdits() && !discardArmed) {
+      discardArmed = true;
+      setStatus('You have unsaved text. Use Save song, Add slide or Update, or press Done again to discard it.', 'error');
+      return;
+    }
+    discardArmed = false;
+    editing = false;
+    listOpen = !getSong();
+    render();
+  });
+  titleInput.addEventListener('input', () => { discardArmed = false; });
   btnSave.addEventListener('click', saveSong);
   btnDelete.addEventListener('click', () => { const song = getSong(); if (song) removeSong(song); });
   btnAdd.addEventListener('click', addSlide);
   btnUpdate.addEventListener('click', updateSlide);
   btnDelSlide.addEventListener('click', deleteSlide);
-  slideText.addEventListener('input', refresh);
+  slideText.addEventListener('input', () => { discardArmed = false; refresh(); });
 
   render();
 

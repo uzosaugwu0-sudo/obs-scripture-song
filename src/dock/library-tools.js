@@ -121,7 +121,10 @@ export function initLibraryTools({ library, kv, setStatus, report, onChanged }) 
   btnTools.addEventListener('click', (e) => { e.stopPropagation(); setMenu(menu.classList.contains('hidden')); });
   menu.addEventListener('click', () => setMenu(false));
   document.addEventListener('click', (e) => { if (!menu.contains(e.target) && e.target !== btnTools) setMenu(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+  // Capture phase: while the menu is open, Escape only closes it and never reaches the Hide shortcut.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu.classList.contains('hidden')) { setMenu(false); e.stopPropagation(); }
+  }, true);
 
   toolChoose.addEventListener('click', chooseFolder);
   toolReconnect.addEventListener('click', reconnect);

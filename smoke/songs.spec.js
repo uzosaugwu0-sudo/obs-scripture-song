@@ -221,3 +221,51 @@ test.describe('narrow dock with real-world content', () => {
     expect(box.y).toBeLessThan(2);
   });
 });
+
+test('Escape closes Library tools without taking the live slide off screen', async ({ context }) => {
+  const { dock, overlay } = await openPair(context);
+  await createSong(dock, 'Live Song', ['First slide']);
+  await dock.locator('.card').first().click();
+  await expect(overlay.locator('#ov-body')).toHaveText('First slide');
+  await dock.click('#btn-tools');
+  await expect(dock.locator('#tools-menu')).toBeVisible();
+  await dock.keyboard.press('Escape');
+  await expect(dock.locator('#tools-menu')).toBeHidden();
+  await expect(dock.locator('#status-pill')).toHaveText('LIVE');
+  await expect(overlay.locator('#stage')).not.toHaveClass(/hidden/);
+});
+
+test('editing a song while a slide is live does not blank the screen on the next style change', async ({ context }) => {
+  const { dock, overlay } = await openPair(context);
+  await createSong(dock, 'Edit Live', ['First', 'Second']);
+  await dock.locator('.card').nth(1).click();
+  await expect(overlay.locator('#ov-body')).toHaveText('Second');
+  await dock.click('#btn-edit-song');
+  await dock.click('#btn-done-edit');
+  await dock.click('#tab-style');
+  await dock.click('#size-seg button[data-value="xl"]');
+  await expect(overlay.locator('#stage')).toHaveClass(/fs-xl/);
+  await expect(overlay.locator('#ov-body')).toHaveText('Second');
+  await expect(overlay.locator('#stage')).not.toHaveClass(/hidden/);
+});
+
+test('Done warns about unsaved editor text and discards it on the second press', async ({ context }) => {
+  const { dock } = await openPair(context);
+  await createSong(dock, 'Keep', ['One']);
+  await dock.click('#btn-edit-song');
+  await dock.fill('#slide-textarea', 'typed but not added');
+  await dock.click('#btn-done-edit');
+  await expect(dock.locator('#song-editor')).toBeVisible();
+  await expect(dock.locator('#status-bar')).toContainText('unsaved');
+  await dock.click('#btn-done-edit');
+  await expect(dock.locator('#song-editor')).toBeHidden();
+  await expect(dock.locator('.card')).toHaveCount(1);
+});
+
+test('Done does not nag when everything is saved', async ({ context }) => {
+  const { dock } = await openPair(context);
+  await createSong(dock, 'Clean', ['One']);
+  await dock.click('#btn-edit-song');
+  await dock.click('#btn-done-edit');
+  await expect(dock.locator('#song-editor')).toBeHidden();
+});

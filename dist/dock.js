@@ -1533,10 +1533,23 @@
     let shownIdx = -1;
     let editing = false;
     let listOpen = true;
+    let discardArmed = false;
     const getSong = () => library.get(activeSongId);
+    function contentIndex() {
+      return session.isLive && session.liveTab === "songs" && shownIdx >= 0 ? shownIdx : activeSlideIdx;
+    }
+    function hasUnsavedEdits() {
+      const song = getSong();
+      const typedTitle = titleInput.value.trim();
+      const titleChanged = song ? (typedTitle || "Untitled") !== song.title : typedTitle !== "";
+      const text = slideText.value;
+      const slideChanged = text.trim() !== "" && !(song && activeSlideIdx !== null && song.slides[activeSlideIdx] === text);
+      return titleChanged || slideChanged;
+    }
     function slideLines() {
       const song = getSong();
-      if (song && activeSlideIdx !== null) return song.slides[activeSlideIdx] || "";
+      const idx = contentIndex();
+      if (song && idx !== null) return song.slides[idx] || "";
       return editing ? slideText.value.trim() : "";
     }
     function resetSelection() {
@@ -1765,9 +1778,18 @@
     btnEdit.addEventListener("click", startEditing);
     btnNew.addEventListener("click", startNew);
     btnDone.addEventListener("click", () => {
+      if (hasUnsavedEdits() && !discardArmed) {
+        discardArmed = true;
+        setStatus("You have unsaved text. Use Save song, Add slide or Update, or press Done again to discard it.", "error");
+        return;
+      }
+      discardArmed = false;
       editing = false;
       listOpen = !getSong();
       render();
+    });
+    titleInput.addEventListener("input", () => {
+      discardArmed = false;
     });
     btnSave.addEventListener("click", saveSong);
     btnDelete.addEventListener("click", () => {
@@ -1777,7 +1799,10 @@
     btnAdd.addEventListener("click", addSlide);
     btnUpdate.addEventListener("click", updateSlide);
     btnDelSlide.addEventListener("click", deleteSlide);
-    slideText.addEventListener("input", refresh);
+    slideText.addEventListener("input", () => {
+      discardArmed = false;
+      refresh();
+    });
     render();
     return {
       getContent() {
@@ -2322,8 +2347,11 @@ ${DELIMITER}
       if (!menu.contains(e.target) && e.target !== btnTools) setMenu(false);
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") setMenu(false);
-    });
+      if (e.key === "Escape" && !menu.classList.contains("hidden")) {
+        setMenu(false);
+        e.stopPropagation();
+      }
+    }, true);
     toolChoose.addEventListener("click", chooseFolder);
     toolReconnect.addEventListener("click", reconnect);
     toolRewrite.addEventListener("click", async () => {
