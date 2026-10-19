@@ -57,43 +57,47 @@ That's it. One browser source handles both verses and lyrics.
 
 ## Using it during a service
 
+The dock has a **live bar** pinned at the top of every tab: what is loaded, **Show**, **Hide** and previous / next. Under it are three tabs: **Scripture**, **Songs** and **Style**.
+
 ### Scripture tab
 
-Type a reference and press **Enter**, or use the book / chapter / verse dropdowns. Reference entry is forgiving — `Psalm 23:1`, `Ps 23:1`, `1st John 4:8`, `II Corinthians 5:17` and `Philipp 4:13` all work. Ambiguous shorthand like `Jo` is rejected rather than guessed, so you never get the wrong verse by accident.
+One box does everything. Type a reference and press **Enter**, type a book name to get suggestions, or type words from a verse to search for it. Reference entry is forgiving: `Psalm 23:1`, `Ps 23:1`, `1st John 4:8`, `II Corinthians 5:17` and `Philipp 4:13` all work. Ambiguous shorthand like `Jo` is rejected rather than guessed, so you never get the wrong verse by accident.
 
-- **Quick books** — one-tap buttons for the ten most-preached books
-- **Ranges** — `Romans 8:28-30`, up to 20 verses at once
-- **Edit before you show** — the verse text box is editable, so you can trim a long verse or fix spacing without affecting the lookup
-- **Next / Previous** — step through consecutive verses, rolling over chapter and book boundaries. While something is live, stepping updates the screen immediately.
-- **Search** — find a verse by wording when you can't remember the reference
-- **Random** — pick from the whole Bible, Old or New Testament, the Gospels, or Psalms and Proverbs
-- **Auto Show** — send each verse to the stream the moment it's looked up
+- **Quick books**: one-tap chips for the ten most-preached books
+- **Ranges**: `Romans 8:28-30`, up to 20 verses at once
+- **Edit before you show**: the verse text box is editable, so you can trim a long verse or fix spacing without affecting the lookup
+- **Next / Previous**: step through consecutive verses, rolling over chapter and book boundaries. While something is live, stepping updates the screen immediately.
+- **Word search**: type words you remember and pick the verse from the list
+- **Random**: a small button, with a choice of the whole Bible, Old or New Testament, the Gospels, or Psalms and Proverbs
+- **Auto Show**: send each verse to the stream the moment it is looked up
 - **31 translations** in English, Portuguese, Russian and Chinese, filtered by the language dropdown. KJV and WEB work with no internet; any verse looked up before is remembered offline.
 
 ### Songs tab
 
-- **Library** — search by title or by lyrics; matching words are highlighted
-- **Slides** — one block of text per slide. Click a chip to edit it, then use ← / → to move through them live.
-- **Import** — from `.json`, `.txt`, `.csv` or `.tsv`, one file or a whole folder at once, with a preview showing what's new and what already exists
-- **Duplicates** — find songs with matching titles and keep the fullest copy
-- **Library folder** — choose a folder once and every song is saved there as its own `.json` file, plus a `lyrics.txt` holding every song in one text file. Back it up or sync it like any other folder. `lyrics.txt` can be imported again with **↑ File**.
-- **Export** — save the whole library as JSON
+- **One search box** for titles and lyrics. Type a song title or any part of a lyric: the words can be in any order, partial words work, and punctuation and accents are ignored. Title matches come first, and a lyric match shows the matching line with your words highlighted.
+- **Slides are big cards.** Click a card to put that slide on screen, then use the left and right arrow keys to move through the song live. **Edit** opens the editor; **+ New** starts a song.
+- **Import** reads `.json`, `.txt`, `.csv` or `.tsv` files, or `lyrics.txt`, with a preview of what is new and what already exists.
+- **Library tools** holds import a folder, export as JSON, find duplicates, clear the library, and the library folder: choose it once and every song is saved there as its own `.json` file, plus a `lyrics.txt` holding every song in one text file. Back it up or sync it like any other folder.
 
-Your existing Lyric Display library is picked up automatically the first time you open the plugin, so you don't need to re-import anything.
+Your existing Lyric Display library is picked up automatically the first time you open the plugin, so you do not need to re-import anything.
+
+### Style tab
+
+Five themes: **Frosted** (dark glass), **Frosted Light**, **Pure Type** (no card, text over the video), **Sacred Light** (image card) and **Custom** with your own background, text and accent colours. Four animations: **Soft rise** (default), **Glass wipe**, **Line by line** and **Instant cut**. Position, size, font, italic, background opacity, overlay scale and a background image are here too, and the Diagnostics list sits at the bottom.
+
+Saved settings from earlier versions are converted automatically: Dark Stage, Classic Gold and Neon Live become Frosted, Clean White becomes Frosted Light, Fade and Slide become Soft rise, and None becomes Instant cut.
 
 ### Shared controls
 
-Stream controls and display settings apply to whichever tab you're on:
-
 | Key | Action |
 |-----|--------|
-| `←` `→` | Previous / next verse or slide |
+| Left / Right arrow | Previous / next verse or slide |
 | `Space` | Show / hide |
 | `Esc` | Hide |
 
-Settings are shared deliberately — theme, position, font, size, opacity, scale and background all carry across both tabs so scripture and lyrics match on screen. Six display themes: Classic Gold, Dark Minimal, Clean White, Neon Live, Sacred Light, and a Custom theme with your own background, text and accent colours. Add a background image, hide the card so text floats over your video, or scale the overlay's height without changing its width.
+Settings are shared deliberately: theme, position, font, size, opacity, scale and background carry across both tabs so scripture and lyrics match on screen.
 
-One deliberate behaviour worth knowing: if a song is live and you switch to the Scripture tab to prepare the next verse, adjusting a slider or theme keeps restyling the **song** that's on screen. Nothing swaps until you press **Show**.
+One deliberate behaviour worth knowing: if a song is live and you switch to the Scripture tab to prepare the next verse, changing a style setting keeps restyling the **song** that is on screen. Nothing swaps until you press **Show**.
 
 ---
 
@@ -107,9 +111,9 @@ One deliberate behaviour worth knowing: if a song is live and you switch to the 
 
 **Sacred Light shows a plain card.** It needs `dist/assets/bg1.png`. Check the file is still there.
 
-**Songs disappeared.** If the dock shows a yellow banner, songs are only in this browser: choose a library folder so they are kept as files. If it shows a red banner, OBS lost access to the folder; click **Reconnect**. Use **↓ JSON** now and then for a backup copy.
+**Songs disappeared.** If the dock shows a yellow banner, songs are only in this browser: choose a library folder so they are kept as files. If it shows a red banner, OBS lost access to the folder; click **Reconnect**. Use **Export all as JSON** in Library tools now and then for a backup copy.
 
-**Something is not working and the message is unclear.** Open **Diagnostics** at the bottom of the dock and read the last few lines; it lists recent errors with the time.
+**Something is not working and the message is unclear.** Open **Diagnostics** at the bottom of the Style tab and read the last few lines; it lists recent errors with the time.
 
 ---
 
