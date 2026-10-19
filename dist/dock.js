@@ -11,28 +11,18 @@
   }
 
   // src/dock/status.js
-  function createStatus({ statusBar, statusDot, statusLabel, liveKind }) {
+  function createStatus({ statusBar }) {
     function setStatus(msg, type) {
       statusBar.textContent = msg;
-      statusBar.className = type ? "is-" + type : "";
+      statusBar.className = type ? "status-bar is-" + type : "status-bar";
       if (msg) setTimeout(() => {
         if (statusBar.textContent === msg) {
           statusBar.textContent = "";
-          statusBar.className = "";
+          statusBar.className = "status-bar";
         }
       }, 3500);
     }
-    function setDotState(phase, liveTab) {
-      statusDot.className = "status-dot" + (phase === "live" ? " live" : phase === "hidden" ? " hidden-state" : "");
-      statusLabel.textContent = phase === "live" ? "Live" : phase === "hidden" ? "Hidden" : "Off";
-      if (phase === "live" && liveTab) {
-        liveKind.className = "live-kind " + (liveTab === "scripture" ? "is-verse" : "is-song");
-        liveKind.textContent = liveTab === "scripture" ? "Verse" : "Song";
-      } else {
-        liveKind.className = "live-kind hidden";
-      }
-    }
-    return { setStatus, setDotState };
+    return { setStatus };
   }
 
   // src/dock/session.js
@@ -121,6 +111,8 @@
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
   var KINDS = Object.freeze(["verse", "song"]);
+  var THEMES = Object.freeze(["frosted", "frosted-light", "pure", "sacred-light", "custom"]);
+  var ANIMATIONS = Object.freeze(["rise", "wipe", "lines", "cut"]);
   var DEFAULTS = Object.freeze({
     action: "show",
     kind: "verse",
@@ -131,10 +123,10 @@
     // verse text or slide lines
     reference: "",
     // scripture reference
-    theme: "dark",
+    theme: "frosted",
     position: "bottom",
     fontSize: "md",
-    animation: "fade",
+    animation: "rise",
     visible: false,
     version: STATE_VERSION,
     seq: 0,
@@ -151,6 +143,16 @@
     bgImage: null,
     customColors: { bg: "#0a0a14", text: "#ffffff", accent: "#a78bfa" }
   });
+  var LEGACY_THEMES = Object.freeze({ dark: "frosted", gold: "frosted", neon: "frosted", white: "frosted-light" });
+  var LEGACY_ANIMATIONS = Object.freeze({ fade: "rise", slide: "rise", none: "cut" });
+  function migrateLegacy({ theme, animation } = {}) {
+    const t = LEGACY_THEMES[theme] ?? theme;
+    const a = LEGACY_ANIMATIONS[animation] ?? animation;
+    return {
+      theme: THEMES.includes(t) ? t : DEFAULTS.theme,
+      animation: ANIMATIONS.includes(a) ? a : DEFAULTS.animation
+    };
+  }
   function nextSeq(lastSeq, nowMs) {
     return Math.max(lastSeq + 1, nowMs);
   }
@@ -164,7 +166,7 @@
     };
     if (!ACTIONS.includes(merged.action)) return null;
     if (!KINDS.includes(merged.kind)) return null;
-    return merged;
+    return { ...merged, ...migrateLegacy(merged) };
   }
 
   // src/transport/broadcast.js
@@ -297,6 +299,159 @@
     return createBroadcastTransport({ role, channel, storage, onError });
   }
 
+  // src/core/settings.js
+  var SETTINGS_KEY = "obs-stage-display-settings";
+  function defaultStorage() {
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  }
+  function saveSettings(settings, { storage = defaultStorage(), onError = () => {
+  } } = {}) {
+    try {
+      storage?.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (err) {
+      onError(err);
+    }
+  }
+  function loadSettings({ storage = defaultStorage(), onError = () => {
+  } } = {}) {
+    try {
+      const raw = storage?.getItem(SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const merged = {
+          ...DEFAULTS,
+          ...parsed,
+          customColors: { ...DEFAULTS.customColors, ...parsed.customColors || {} }
+        };
+        return { ...merged, ...migrateLegacy(merged) };
+      }
+    } catch (err) {
+      onError(err);
+    }
+    return { ...DEFAULTS, customColors: { ...DEFAULTS.customColors } };
+  }
+
+  // src/dock/settings-store.js
+  var STYLE_KEYS = [
+    "theme",
+    "position",
+    "fontSize",
+    "animation",
+    "font",
+    "italic",
+    "opacity",
+    "scale",
+    "showCard",
+    "showTitle",
+    "showReference"
+  ];
+  var PERSISTED_KEYS = [...STYLE_KEYS, "customColors", "bgImage", "language", "translation", "autoShow"];
+  function pick(source, keys) {
+    const out = {};
+    for (const key of keys) if (key in source) out[key] = source[key];
+    return out;
+  }
+  function createSettingsStore({ storage, onError = () => {
+  } } = {}) {
+    let current = loadSettings({ storage, onError });
+    const listeners = /* @__PURE__ */ new Set();
+    return {
+      get: () => current,
+      update(patch) {
+        current = {
+          ...current,
+          ...patch,
+          customColors: { ...current.customColors, ...patch.customColors || {} }
+        };
+        saveSettings(pick(current, PERSISTED_KEYS), { storage, onError });
+        listeners.forEach((fn) => fn(current));
+        return current;
+      },
+      subscribe(fn) {
+        listeners.add(fn);
+        return () => listeners.delete(fn);
+      },
+      /** What the overlay needs, in the shape the transport sends. */
+      styleState() {
+        return {
+          ...pick(current, STYLE_KEYS),
+          customColors: { ...current.customColors },
+          bgMode: current.bgImage ? "image" : "color",
+          bgImage: current.bgImage || null
+        };
+      }
+    };
+  }
+
+  // src/dock/live-bar.js
+  var PHASE_LABEL = { off: "OFF", live: "LIVE", hidden: "HIDDEN" };
+  var EMPTY_PREVIEW = { has: false, text: "Nothing loaded", sub: "Look up a verse or pick a slide", canNav: false };
+  function initLiveBar({ session, tabs, setStatus }) {
+    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
+    const activeTab = () => tabs[session.activeTab] || null;
+    function liveLabel() {
+      if (session.phase !== "live") return "";
+      if (session.liveTab === "scripture") return "Verse";
+      const title = tabs.songs ? tabs.songs.getContent().title : "";
+      return title ? "Song \xB7 " + title : "Song";
+    }
+    function refresh() {
+      const tab = activeTab();
+      const p = tab ? tab.preview() : EMPTY_PREVIEW;
+      bar.dataset.phase = session.phase;
+      pill.textContent = PHASE_LABEL[session.phase];
+      what.textContent = liveLabel();
+      previewText.textContent = p.text;
+      previewSub.textContent = p.sub;
+      btnShow.disabled = !p.has;
+      btnHide.disabled = !session.isLive;
+      btnPrev.disabled = !p.canNav;
+      btnNext.disabled = !p.canNav;
+    }
+    function step(dir) {
+      const tab = activeTab();
+      if (tab) tab.step(dir);
+    }
+    btnShow.addEventListener("click", () => {
+      const tab = activeTab();
+      if (!tab || !tab.preview().has) {
+        setStatus(session.activeTab === "scripture" ? "Look up a verse first." : "No slide text to display.", "error");
+        return;
+      }
+      if (tab.markShown) tab.markShown();
+      session.show();
+      setStatus(session.activeTab === "scripture" ? "Verse is live." : "Slide is live.", "success");
+    });
+    btnHide.addEventListener("click", () => session.hide());
+    btnClear.addEventListener("click", () => {
+      session.clear();
+      if (tabs.songs && tabs.songs.resetPosition) tabs.songs.resetPosition();
+    });
+    btnPrev.addEventListener("click", () => step(-1));
+    btnNext.addEventListener("click", () => step(1));
+    document.addEventListener("keydown", (e) => {
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+      if (e.key === "Escape") btnHide.click();
+      else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        step(1);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        if (session.isLive) btnHide.click();
+        else btnShow.click();
+      }
+    });
+    return { refresh };
+  }
+
   // src/scripture/books.js
   var BIBLE_BOOKS = [
     ["Genesis", "Gen", 50],
@@ -412,9 +567,8 @@
     "col": "Colossians"
   };
   function bookIndexOf(name) {
-    let n = (name || "").toLowerCase().trim().replace(/\.$/, "");
+    const n = normalizeBookName(name);
     if (!n) return -1;
-    n = n.replace(/^(1st|first|i)\s+/, "1 ").replace(/^(2nd|second|ii)\s+/, "2 ").replace(/^(3rd|third|iii)\s+/, "3 ").replace(/\s+/g, " ");
     let i = BIBLE_BOOKS.findIndex((b) => b[0].toLowerCase() === n || b[1] && b[1].toLowerCase() === n);
     if (i !== -1) return i;
     const alias = BOOK_ALIASES[n];
@@ -428,10 +582,9 @@
     });
     return hits.length === 1 ? hits[0] : -1;
   }
-  function searchBooks(query) {
-    const q = (query || "").toLowerCase().trim();
-    if (!q) return [];
-    return BIBLE_BOOKS.filter(([name, abbr]) => name.toLowerCase().startsWith(q) || abbr.toLowerCase().startsWith(q) || name.toLowerCase().includes(q)).map(([name]) => name).slice(0, 8);
+  function normalizeBookName(name) {
+    const n = (name || "").toLowerCase().trim().replace(/\.$/, "");
+    return n.replace(/^(1st|first|i)\s+/, "1 ").replace(/^(2nd|second|ii)\s+/, "2 ").replace(/^(3rd|third|iii)\s+/, "3 ").replace(/\s+/g, " ");
   }
 
   // src/scripture/translations.js
@@ -757,6 +910,353 @@
     };
   }
 
+  // src/core/idb.js
+  var STORE = "kv";
+  function openKv(dbName, idb = globalThis.indexedDB) {
+    let dbPromise = null;
+    const open = () => {
+      dbPromise ?? (dbPromise = new Promise((resolve, reject) => {
+        const request = idb.open(dbName, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      }));
+      return dbPromise;
+    };
+    const run = async (mode, op) => {
+      const db = await open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, mode);
+        const request = op(tx.objectStore(STORE));
+        tx.oncomplete = () => resolve(request.result);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    };
+    return {
+      get: (key) => run("readonly", (store) => store.get(key)),
+      set: (key, value) => run("readwrite", (store) => store.put(value, key)),
+      del: (key) => run("readwrite", (store) => store.delete(key))
+    };
+  }
+  function idbCache(kv, onError = () => {
+  }) {
+    return {
+      async get(key) {
+        try {
+          return await kv.get(key);
+        } catch (err) {
+          onError(err);
+          return void 0;
+        }
+      },
+      async set(key, value) {
+        try {
+          await kv.set(key, value);
+        } catch (err) {
+          onError(err);
+        }
+      }
+    };
+  }
+
+  // src/scripture/smart-input.js
+  var MIN_SEARCH_LETTERS = 3;
+  function suggestBooks(text, limit = 5) {
+    const q = normalizeBookName(text);
+    if (!q) return [];
+    const matched = /* @__PURE__ */ new Set();
+    BIBLE_BOOKS.forEach(([name, abbr]) => {
+      if (name.toLowerCase().startsWith(q) || abbr.toLowerCase().startsWith(q)) matched.add(name);
+    });
+    Object.entries(BOOK_ALIASES).forEach(([alias, name]) => {
+      if (alias.startsWith(q)) matched.add(name);
+    });
+    return BIBLE_BOOKS.map((b) => b[0]).filter((name) => matched.has(name)).slice(0, limit);
+  }
+  function referenceBookResolves(text) {
+    const parsed = parseReference(text);
+    return parsed !== null && bookIndexOf(parsed.book) !== -1;
+  }
+  function classifyInput(text) {
+    const t = (text || "").trim();
+    if (!t) return { kind: "empty" };
+    if (referenceBookResolves(t)) return { kind: "reference", reference: t };
+    const bookIndex = bookIndexOf(t);
+    if (bookIndex !== -1) return { kind: "book", bookIndex };
+    return { kind: "search", query: t };
+  }
+  function dropdownRows(text) {
+    const t = (text || "").trim();
+    if (!t) return [];
+    const rows = suggestBooks(t).map((name) => ({ type: "book", name }));
+    const letters = (t.match(/[a-z]/gi) || []).length;
+    if (letters >= MIN_SEARCH_LETTERS && !referenceBookResolves(t) && bookIndexOf(t) === -1) {
+      rows.push({ type: "search", query: t });
+    }
+    return rows;
+  }
+
+  // src/dock/smart-box.js
+  var QUICK_BOOKS = ["John", "Romans", "Psalms", "Matthew", "Genesis", "Proverbs", "Isaiah", "Hebrews", "Acts", "Revelation"];
+  var BLUR_CLOSE_MS = 120;
+  function initSmartBox({ onReference, onSearch, setStatus }) {
+    const input = $("smart-input"), list = $("smart-list"), chips = $("quick-books");
+    let rows = [];
+    let highlight = -1;
+    function close() {
+      list.classList.add("hidden");
+      list.replaceChildren();
+      rows = [];
+      highlight = -1;
+    }
+    function paintHighlight() {
+      [...list.children].forEach((li, i) => li.classList.toggle("hi", i === highlight));
+    }
+    function setBook(name) {
+      input.value = name + " ";
+      input.focus();
+      render();
+      const book = BIBLE_BOOKS.find((b) => b[0] === name);
+      if (book) setStatus(book[0] + " has " + book[2] + " chapters. Type a chapter and verse.", "");
+    }
+    function pick2(row) {
+      if (row.type === "book") {
+        setBook(row.name);
+        return;
+      }
+      close();
+      onSearch(row.query);
+    }
+    function render() {
+      rows = dropdownRows(input.value);
+      highlight = -1;
+      if (!rows.length) {
+        close();
+        return;
+      }
+      list.replaceChildren(...rows.map((row) => {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        if (row.type === "book") {
+          li.textContent = row.name;
+          const book = BIBLE_BOOKS.find((b) => b[0] === row.name);
+          const small = document.createElement("small");
+          small.textContent = (book ? book[2] : "") + " chapters";
+          li.appendChild(small);
+        } else {
+          li.textContent = 'Search verses for "' + row.query + '"';
+        }
+        li.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          pick2(row);
+        });
+        return li;
+      }));
+      list.classList.remove("hidden");
+    }
+    function submit() {
+      const result = classifyInput(input.value);
+      if (result.kind === "empty") {
+        setStatus("Enter a reference or some words first.", "error");
+        return;
+      }
+      if (result.kind === "reference") {
+        close();
+        onReference(result.reference);
+        return;
+      }
+      if (result.kind === "book") {
+        setBook(BIBLE_BOOKS[result.bookIndex][0]);
+        return;
+      }
+      close();
+      onSearch(result.query);
+    }
+    function move(dir) {
+      if (!rows.length) return;
+      highlight = highlight === -1 ? dir > 0 ? 0 : rows.length - 1 : (highlight + dir + rows.length) % rows.length;
+      paintHighlight();
+    }
+    input.addEventListener("input", render);
+    input.addEventListener("blur", () => setTimeout(close, BLUR_CLOSE_MS));
+    input.addEventListener("keydown", (e) => {
+      const open = !list.classList.contains("hidden");
+      if (e.key === "ArrowDown" && open) {
+        e.preventDefault();
+        move(1);
+      } else if (e.key === "ArrowUp" && open) {
+        e.preventDefault();
+        move(-1);
+      } else if (e.key === "Escape") close();
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        if (open && highlight >= 0) pick2(rows[highlight]);
+        else submit();
+      }
+    });
+    QUICK_BOOKS.forEach((name) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.textContent = name;
+      chip.addEventListener("click", () => setBook(name));
+      chips.appendChild(chip);
+    });
+    return {
+      setValue(text) {
+        input.value = text;
+        close();
+      },
+      focus() {
+        input.focus();
+      }
+    };
+  }
+
+  // src/dock/scripture-tab.js
+  function initScriptureTab({ session, scripture, store, setStatus, refresh }) {
+    const verseText = $("verse-text"), languageSel = $("language-sel"), translationSel = $("translation-sel"), autoShowCb = $("auto-show-cb"), randomScope = $("random-scope"), btnRandom = $("btn-random"), results = $("search-results");
+    let plainRef = "";
+    let refLabel = "";
+    let busy = false;
+    const translation = () => translationSel.value || "KJV";
+    function fillLanguages() {
+      LANGUAGES.forEach((lang) => {
+        const option = document.createElement("option");
+        option.value = lang;
+        option.textContent = lang;
+        languageSel.appendChild(option);
+      });
+    }
+    function fillTranslations(keepKey) {
+      translationSel.replaceChildren(...TRANSLATIONS.filter((t) => t.lang === languageSel.value).map((t) => {
+        const option = document.createElement("option");
+        option.value = t.key;
+        option.textContent = t.key + " - " + t.label;
+        return option;
+      }));
+      if (keepKey && [...translationSel.options].some((o) => o.value === keepKey)) translationSel.value = keepKey;
+    }
+    function hideResults() {
+      results.classList.add("hidden");
+      results.replaceChildren();
+    }
+    function apply(result) {
+      verseText.value = result.text;
+      plainRef = result.rawRef;
+      refLabel = result.reference;
+      smart.setValue(result.rawRef);
+      hideResults();
+      refresh();
+      setStatus(result.reference, "success");
+    }
+    async function lookup(reference) {
+      if (busy) return;
+      busy = true;
+      setStatus("Looking up " + reference + "...", "loading");
+      const result = await scripture.fetchVerse(reference, translation());
+      busy = false;
+      if (result.error) {
+        setStatus(result.error, "error");
+        return;
+      }
+      apply(result);
+      if (autoShowCb.checked) session.show();
+    }
+    async function step(dir) {
+      if (!plainRef || busy) return;
+      busy = true;
+      setStatus(dir > 0 ? "Next verse..." : "Previous verse...", "loading");
+      const next = await stepReference(
+        plainRef,
+        dir,
+        (bookId, chapter) => scripture.fetchVerseCount(translation(), bookId, chapter)
+      );
+      if (!next) {
+        busy = false;
+        setStatus("That is the end of the Bible.", "");
+        return;
+      }
+      const result = await scripture.fetchVerse(next, translation());
+      busy = false;
+      if (result.error) {
+        setStatus(result.error, "error");
+        return;
+      }
+      apply(result);
+      if (session.isLive || autoShowCb.checked) session.show();
+    }
+    async function runSearch(query) {
+      setStatus("Searching " + translation() + "...", "loading");
+      const found = await scripture.searchScripture(translation(), query);
+      if (found.error) {
+        hideResults();
+        setStatus(found.error, "error");
+        return;
+      }
+      if (!found.length) {
+        hideResults();
+        setStatus('No results for "' + query + '".', "");
+        return;
+      }
+      results.replaceChildren(...found.map((r) => {
+        const ref = buildReference(r.book, r.chapter, r.verse);
+        const li = document.createElement("li");
+        const refEl = document.createElement("span");
+        refEl.className = "ref";
+        refEl.textContent = ref;
+        const textEl = document.createElement("span");
+        textEl.innerHTML = highlightMatch(r.text, query);
+        li.append(refEl, textEl);
+        li.addEventListener("click", () => {
+          lookup(ref);
+        });
+        return li;
+      }));
+      results.classList.remove("hidden");
+      setStatus(found.length + " result" + (found.length === 1 ? "" : "s") + ".", "success");
+    }
+    const smart = initSmartBox({ onReference: lookup, onSearch: runSearch, setStatus });
+    const saved = store.get();
+    fillLanguages();
+    languageSel.value = LANGUAGES.includes(saved.language) ? saved.language : "English";
+    fillTranslations(saved.translation || "KJV");
+    autoShowCb.checked = !!saved.autoShow;
+    languageSel.addEventListener("change", () => {
+      fillTranslations();
+      store.update({ language: languageSel.value, translation: translation() });
+    });
+    translationSel.addEventListener("change", () => {
+      store.update({ translation: translation() });
+      if (plainRef) lookup(plainRef);
+    });
+    autoShowCb.addEventListener("change", () => store.update({ autoShow: autoShowCb.checked }));
+    verseText.addEventListener("input", refresh);
+    btnRandom.addEventListener("click", async () => {
+      setStatus("Picking a verse...", "loading");
+      const picked = await scripture.randomReference(translation(), randomScope.value);
+      if (picked.error) {
+        setStatus(picked.error, "error");
+        return;
+      }
+      await lookup(picked.reference);
+    });
+    return {
+      getContent: () => ({ body: verseText.value.trim(), reference: refLabel }),
+      preview() {
+        const body = verseText.value.trim();
+        return {
+          has: body.length > 0,
+          text: body || "Nothing loaded",
+          sub: body ? refLabel || "Edited text" : "Look up a verse to preview",
+          canNav: !!plainRef
+        };
+      },
+      step,
+      focus: () => smart.focus()
+    };
+  }
+
   // src/songs/model.js
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -941,750 +1441,397 @@
     return { load, save };
   }
 
-  // src/core/idb.js
-  var STORE = "kv";
-  function openKv(dbName, idb = globalThis.indexedDB) {
-    let dbPromise = null;
-    const open = () => {
-      dbPromise ?? (dbPromise = new Promise((resolve, reject) => {
-        const request = idb.open(dbName, 1);
-        request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+  // src/songs/search.js
+  var CONTEXT = 30;
+  var NO_MATCH = Object.freeze({ matched: false, via: null, excerpt: null, score: 0 });
+  function normalizeText(text) {
+    return String(text ?? "").normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase().replace(/['\u2019]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  }
+  function tokenize(query) {
+    const normalized = normalizeText(query);
+    return normalized ? normalized.split(" ") : [];
+  }
+  function excerptFor(slides, tokens) {
+    let best = "";
+    let bestHits = -1;
+    for (const slide of slides) {
+      const normalized = normalizeText(slide);
+      const hits = tokens.filter((t) => normalized.includes(t)).length;
+      if (hits > bestHits) {
+        best = slide;
+        bestHits = hits;
+      }
+    }
+    const lower = best.toLowerCase();
+    const found = tokens.map((t) => lower.indexOf(t)).filter((i) => i >= 0);
+    const idx = found.length ? Math.min(...found) : 0;
+    const start = Math.max(0, idx - CONTEXT);
+    const end = Math.min(best.length, idx + CONTEXT * 2);
+    return (start > 0 ? "..." : "") + best.slice(start, end).trim() + (end < best.length ? "..." : "");
+  }
+  function songMatches(song, query) {
+    const tokens = tokenize(query);
+    if (!tokens.length) return { matched: true, via: null, excerpt: null, score: 0 };
+    const titleText = normalizeText([song.title, song.altTitle].filter((t) => typeof t === "string").join(" "));
+    const slides = (song.slides || []).filter((s) => typeof s === "string");
+    const lyricsText = normalizeText(slides.join(" "));
+    let titleHits = 0;
+    let lyricHits = 0;
+    for (const token of tokens) {
+      const inTitle = titleText.includes(token);
+      const inLyrics = lyricsText.includes(token);
+      if (!inTitle && !inLyrics) return NO_MATCH;
+      if (inTitle) titleHits += 1;
+      if (inLyrics) lyricHits += 1;
+    }
+    const phrase = tokens.join(" ");
+    const allInTitle = titleHits === tokens.length;
+    let score = titleHits * 50 + lyricHits * 10;
+    if (allInTitle) score += 1e3;
+    if (titleText.startsWith(phrase)) score += 500;
+    else if (titleText.includes(phrase)) score += 200;
+    if (lyricsText.includes(phrase)) score += 100;
+    return { matched: true, via: allInTitle ? "title" : "lyrics", excerpt: allInTitle ? null : excerptFor(slides, tokens), score };
+  }
+  function searchSongs(songs, query) {
+    return songs.map((song) => ({ song, ...songMatches(song, query) })).filter((result) => result.matched).sort((a, b) => b.score - a.score || a.song.title.localeCompare(b.song.title));
+  }
+  var escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  var escapeHtml2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function markTokens(text, tokens) {
+    const raw = String(text ?? "");
+    const usable = (tokens || []).filter(Boolean).map(escapeRegExp);
+    if (!usable.length) return escapeHtml2(raw);
+    const parts = raw.split(new RegExp("(" + usable.join("|") + ")", "i"));
+    return parts.map((part, i) => i % 2 === 1 ? "<mark>" + escapeHtml2(part) + "</mark>" : escapeHtml2(part)).join("");
+  }
+
+  // src/songs/duplicates.js
+  function findDuplicateGroups(songs) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const song of songs) {
+      const key = normalizeTitle(song.title);
+      if (!key) continue;
+      groups.set(key, [...groups.get(key) || [], song]);
+    }
+    return [...groups.values()].filter((group) => group.length > 1);
+  }
+  function pickRemovals(groups) {
+    const ids = /* @__PURE__ */ new Set();
+    for (const group of groups) {
+      const keeper = group.reduce((best, s) => s.slides.length > best.slides.length ? s : best, group[0]);
+      for (const s of group) if (s.id !== keeper.id) ids.add(s.id);
+    }
+    return ids;
+  }
+
+  // src/dock/songs-tab.js
+  function initSongsTab({ session, library, setStatus, refresh }) {
+    const search = $("song-search"), listEl = $("song-list"), view = $("song-view"), nameEl = $("song-name"), btnAll = $("btn-all-songs"), btnEdit = $("btn-edit-song"), cardsEl = $("slide-cards"), editor = $("song-editor"), titleInput = $("song-title-input"), slideList = $("slide-list"), slideText = $("slide-textarea"), btnAdd = $("btn-add-slide"), btnUpdate = $("btn-update-slide"), btnDelSlide = $("btn-delete-slide"), btnSave = $("btn-save-song"), btnDelete = $("btn-delete-song"), btnDone = $("btn-done-edit"), btnNew = $("btn-new-song");
+    let activeSongId = null;
+    let activeSlideIdx = null;
+    let shownIdx = -1;
+    let editing = false;
+    let listOpen = true;
+    let discardArmed = false;
+    const getSong = () => library.get(activeSongId);
+    function contentIndex() {
+      return session.isLive && session.liveTab === "songs" && shownIdx >= 0 ? shownIdx : activeSlideIdx;
+    }
+    function hasUnsavedEdits() {
+      const song = getSong();
+      const typedTitle = titleInput.value.trim();
+      const titleChanged = song ? (typedTitle || "Untitled") !== song.title : typedTitle !== "";
+      const text = slideText.value;
+      const slideChanged = text.trim() !== "" && !(song && activeSlideIdx !== null && song.slides[activeSlideIdx] === text);
+      return titleChanged || slideChanged;
+    }
+    function slideLines() {
+      const song = getSong();
+      const idx = contentIndex();
+      if (song && idx !== null) return song.slides[idx] || "";
+      return editing ? slideText.value.trim() : "";
+    }
+    function resetSelection() {
+      activeSongId = null;
+      activeSlideIdx = null;
+      shownIdx = -1;
+      editing = false;
+      listOpen = true;
+    }
+    function renderList() {
+      const query = search.value;
+      const tokens = tokenize(query);
+      const dupIds = new Set(findDuplicateGroups(library.list()).flat().map((s) => s.id));
+      const found = searchSongs(library.list(), query);
+      if (!found.length) {
+        const li = document.createElement("li");
+        li.className = "song-item";
+        li.textContent = query.trim() ? 'No songs match "' + query.trim() + '"' : "No songs yet. Use + New or Import.";
+        listEl.replaceChildren(li);
+        return;
+      }
+      listEl.replaceChildren(...found.map(({ song, excerpt }) => {
+        const li = document.createElement("li");
+        li.className = "song-item";
+        const title = document.createElement("span");
+        title.className = "title";
+        title.innerHTML = markTokens(song.title || "Untitled", tokens);
+        if (dupIds.has(song.id)) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = "DUPLICATE";
+          title.appendChild(badge);
+        }
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = song.slides.length + (song.slides.length === 1 ? " slide" : " slides");
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "del";
+        del.textContent = "\u2715";
+        del.title = "Delete this song";
+        del.setAttribute("aria-label", "Delete " + song.title);
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          removeSong(song);
+        });
+        li.append(title, count, del);
+        if (excerpt) {
+          const note = document.createElement("span");
+          note.className = "excerpt";
+          note.innerHTML = markTokens(excerpt, tokens);
+          li.appendChild(note);
+        }
+        li.addEventListener("click", () => open(song.id));
+        return li;
       }));
-      return dbPromise;
-    };
-    const run = async (mode, op) => {
-      const db = await open();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, mode);
-        const request = op(tx.objectStore(STORE));
-        tx.oncomplete = () => resolve(request.result);
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error);
-      });
-    };
-    return {
-      get: (key) => run("readonly", (store) => store.get(key)),
-      set: (key, value) => run("readwrite", (store) => store.put(value, key)),
-      del: (key) => run("readwrite", (store) => store.delete(key))
-    };
-  }
-  function idbCache(kv, onError = () => {
-  }) {
-    return {
-      async get(key) {
-        try {
-          return await kv.get(key);
-        } catch (err) {
-          onError(err);
-          return void 0;
-        }
-      },
-      async set(key, value) {
-        try {
-          await kv.set(key, value);
-        } catch (err) {
-          onError(err);
-        }
+    }
+    function renderCards(song) {
+      if (!song.slides.length) {
+        const hint = document.createElement("p");
+        hint.className = "faint";
+        hint.textContent = "This song has no slides yet. Press Edit to add some.";
+        cardsEl.replaceChildren(hint);
+        return;
       }
-    };
-  }
-
-  // src/core/settings.js
-  var SETTINGS_KEY = "obs-stage-display-settings";
-  function defaultStorage() {
-    try {
-      return globalThis.localStorage ?? null;
-    } catch {
-      return null;
+      cardsEl.replaceChildren(...song.slides.map((text, i) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "card" + (i === activeSlideIdx ? " cur" : "");
+        const number = document.createElement("small");
+        number.textContent = String(i + 1);
+        card.append(number, document.createTextNode(text));
+        card.addEventListener("click", () => showSlide(i));
+        return card;
+      }));
     }
-  }
-  function saveSettings(settings, { storage = defaultStorage(), onError = () => {
-  } } = {}) {
-    try {
-      storage?.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    } catch (err) {
-      onError(err);
+    function renderChips() {
+      const song = getSong();
+      slideList.replaceChildren(...(song ? song.slides : []).map((text, i) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "slide-chip" + (i === activeSlideIdx ? " on" : "");
+        chip.textContent = (text.split("\n")[0] || "Slide " + (i + 1)).slice(0, 30);
+        chip.title = text;
+        chip.addEventListener("click", () => selectSlide(i));
+        return chip;
+      }));
     }
-  }
-  function loadSettings({ storage = defaultStorage(), onError = () => {
-  } } = {}) {
-    try {
-      const raw = storage?.getItem(SETTINGS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
+    function render() {
+      const song = getSong();
+      const showList = !editing && (!song || listOpen);
+      listEl.classList.toggle("hidden", !showList);
+      search.classList.toggle("hidden", editing);
+      view.classList.toggle("hidden", editing || !song || showList);
+      editor.classList.toggle("hidden", !editing);
+      if (showList) renderList();
+      if (song && !editing) {
+        nameEl.textContent = song.title;
+        renderCards(song);
+      }
+      if (editing) renderChips();
+      btnDelete.disabled = !song;
+      refresh();
+    }
+    function open(id) {
+      activeSongId = id;
+      activeSlideIdx = null;
+      shownIdx = -1;
+      editing = false;
+      listOpen = false;
+      search.value = "";
+      render();
+    }
+    function showSlide(i) {
+      activeSlideIdx = i;
+      shownIdx = i;
+      renderCards(getSong());
+      session.show();
+      setStatus("Slide is live.", "success");
+    }
+    function step(dir) {
+      const song = getSong();
+      if (!song || !song.slides.length) return;
+      let target = shownIdx < 0 ? dir > 0 ? 0 : song.slides.length - 1 : shownIdx + dir;
+      target = Math.max(0, Math.min(song.slides.length - 1, target));
+      activeSlideIdx = target;
+      shownIdx = target;
+      renderCards(song);
+      session.show();
+    }
+    async function removeSong(song) {
+      if (!confirm('Delete "' + (song.title || "Untitled") + '"? This cannot be undone.')) return;
+      await library.remove(song.id);
+      if (song.id === activeSongId) resetSelection();
+      render();
+      setStatus('Deleted "' + (song.title || "Untitled") + '".', "");
+    }
+    function selectSlide(i) {
+      const song = getSong();
+      if (!song) return;
+      activeSlideIdx = i;
+      slideText.value = song.slides[i] || "";
+      btnUpdate.disabled = false;
+      btnDelSlide.disabled = false;
+      renderChips();
+      refresh();
+    }
+    function clearSlideEditor() {
+      activeSlideIdx = null;
+      slideText.value = "";
+      btnUpdate.disabled = true;
+      btnDelSlide.disabled = true;
+    }
+    function startEditing() {
+      const song = getSong();
+      editing = true;
+      listOpen = false;
+      titleInput.value = song ? song.title : "";
+      clearSlideEditor();
+      render();
+    }
+    function startNew() {
+      activeSongId = null;
+      shownIdx = -1;
+      startEditing();
+    }
+    async function saveSong() {
+      const title = titleInput.value.trim() || "Untitled";
+      const existing = getSong();
+      const saved = await library.save({ ...existing || { slides: [] }, id: existing ? existing.id : void 0, title });
+      activeSongId = saved.id;
+      btnDelete.disabled = false;
+      setStatus("Song saved.", "success");
+      render();
+    }
+    async function addSlide() {
+      const text = slideText.value;
+      if (!text.trim()) {
+        setStatus("Enter slide text first.", "error");
+        return;
+      }
+      const existing = getSong();
+      const saved = await library.save({
+        ...existing || { title: titleInput.value.trim() || "Untitled" },
+        id: existing ? existing.id : void 0,
+        slides: [...existing ? existing.slides : [], text]
+      });
+      activeSongId = saved.id;
+      activeSlideIdx = saved.slides.length - 1;
+      slideText.value = "";
+      btnUpdate.disabled = false;
+      btnDelSlide.disabled = false;
+      render();
+      setStatus("Slide added.", "success");
+    }
+    async function updateSlide() {
+      const song = getSong();
+      if (!song || activeSlideIdx === null) return;
+      await library.save({ ...song, slides: song.slides.map((s, i) => i === activeSlideIdx ? slideText.value : s) });
+      renderChips();
+      if (session.isLive && session.liveTab === "songs" && shownIdx === activeSlideIdx) session.resendIfLive();
+      refresh();
+      setStatus("Slide updated.", "success");
+    }
+    async function deleteSlide() {
+      const song = getSong();
+      if (!song || activeSlideIdx === null) return;
+      await library.save({ ...song, slides: song.slides.filter((_, i) => i !== activeSlideIdx) });
+      if (shownIdx === activeSlideIdx) shownIdx = -1;
+      clearSlideEditor();
+      render();
+      setStatus("Slide deleted.", "");
+    }
+    search.addEventListener("focus", () => {
+      listOpen = true;
+      render();
+    });
+    search.addEventListener("input", () => {
+      listOpen = true;
+      render();
+    });
+    btnAll.addEventListener("click", () => {
+      listOpen = true;
+      render();
+    });
+    btnEdit.addEventListener("click", startEditing);
+    btnNew.addEventListener("click", startNew);
+    btnDone.addEventListener("click", () => {
+      if (hasUnsavedEdits() && !discardArmed) {
+        discardArmed = true;
+        setStatus("You have unsaved text. Use Save song, Add slide or Update, or press Done again to discard it.", "error");
+        return;
+      }
+      discardArmed = false;
+      editing = false;
+      listOpen = !getSong();
+      render();
+    });
+    titleInput.addEventListener("input", () => {
+      discardArmed = false;
+    });
+    btnSave.addEventListener("click", saveSong);
+    btnDelete.addEventListener("click", () => {
+      const song = getSong();
+      if (song) removeSong(song);
+    });
+    btnAdd.addEventListener("click", addSlide);
+    btnUpdate.addEventListener("click", updateSlide);
+    btnDelSlide.addEventListener("click", deleteSlide);
+    slideText.addEventListener("input", () => {
+      discardArmed = false;
+      refresh();
+    });
+    render();
+    return {
+      getContent() {
+        const song = getSong();
+        return { title: song ? song.title : editing ? titleInput.value.trim() : "", body: slideLines() };
+      },
+      preview() {
+        const song = getSong();
+        const lines = slideLines();
+        const where = activeSlideIdx === null ? "no slide picked" : "slide " + (activeSlideIdx + 1) + " of " + (song ? song.slides.length : 0);
         return {
-          ...DEFAULTS,
-          ...parsed,
-          customColors: { ...DEFAULTS.customColors, ...parsed.customColors || {} }
+          has: lines.length > 0,
+          text: lines || (song ? "Pick a slide" : "Nothing loaded"),
+          sub: song ? song.title + " \xB7 " + where : "Pick a song and a slide",
+          canNav: !!(song && song.slides.length)
         };
-      }
-    } catch (err) {
-      onError(err);
-    }
-    return { ...DEFAULTS, customColors: { ...DEFAULTS.customColors } };
-  }
-
-  // src/core/fonts.js
-  var FONTS = [
-    { label: "Open Sans (Default)", value: "Open Sans" },
-    { label: "Atkinson Hyperlegible", value: "Atkinson Hyperlegible" },
-    { label: "Lato", value: "Lato" },
-    { label: "Montserrat", value: "Montserrat" },
-    { label: "Raleway", value: "Raleway" },
-    { label: "Lora", value: "Lora" },
-    { label: "EB Garamond", value: "EB Garamond" },
-    { label: "Cormorant Garamond", value: "Cormorant Garamond" },
-    { label: "Crimson Text", value: "Crimson Text" },
-    { label: "Playfair Display", value: "Playfair Display" },
-    { label: "Cinzel", value: "Cinzel" },
-    { label: "Georgia", value: "Georgia" }
-  ];
-
-  // src/dock/display-settings.js
-  function initDisplaySettings({ session, setStatus, applyScriptureSettings, onError }) {
-    const persist = (settings) => saveSettings(settings, { onError });
-    const languageSel = $("language-sel"), translationSel = $("translation-sel"), autoShowCb = $("auto-show-cb");
-    const themeSel = $("theme-sel"), positionSel = $("position-sel"), fontsizeSel = $("fontsize-sel"), animationSel = $("animation-sel"), fontSel = $("font-sel"), btnItalic = $("btn-italic"), opacitySlider = $("opacity-slider"), opacityValue = $("opacity-value"), scaleSlider = $("scale-slider"), scaleValue = $("scale-value"), showCardCb = $("show-card-cb"), showTitleCb = $("show-title-cb"), showRefCb = $("show-ref-cb"), customColorsSection = $("custom-colors-section"), colorBg = $("color-bg"), colorText = $("color-text"), colorAccent = $("color-accent"), btnBgImage = $("btn-bg-image"), btnBgClear = $("btn-bg-clear"), bgImageName = $("bg-image-name"), bgImageInput = $("bg-image-input");
-    let isItalic = false;
-    let bgImageData = null;
-    FONTS.forEach((f) => {
-      const o = document.createElement("option");
-      o.value = f.value;
-      o.textContent = f.label;
-      fontSel.appendChild(o);
-    });
-    function saveCurrentSettings() {
-      persist({
-        theme: themeSel.value,
-        position: positionSel.value,
-        fontSize: fontsizeSel.value,
-        animation: animationSel.value,
-        font: fontSel.value,
-        italic: isItalic,
-        opacity: parseInt(opacitySlider.value, 10),
-        scale: parseInt(scaleSlider.value, 10),
-        showCard: showCardCb.checked,
-        showTitle: showTitleCb.checked,
-        showReference: showRefCb.checked,
-        bgImage: bgImageData,
-        bgMode: bgImageData ? "image" : "color",
-        language: languageSel.value,
-        translation: translationSel.value,
-        autoShow: autoShowCb.checked,
-        customColors: { bg: colorBg.value, text: colorText.value, accent: colorAccent.value }
-      });
-    }
-    function applySettings(s) {
-      themeSel.value = s.theme || "dark";
-      positionSel.value = s.position || "bottom";
-      fontsizeSel.value = s.fontSize || "md";
-      animationSel.value = s.animation || "fade";
-      fontSel.value = s.font || "Open Sans";
-      isItalic = !!s.italic;
-      btnItalic.classList.toggle("active", isItalic);
-      opacitySlider.value = s.opacity !== void 0 ? s.opacity : 88;
-      opacityValue.textContent = opacitySlider.value + "%";
-      scaleSlider.value = s.scale !== void 0 ? s.scale : 100;
-      scaleValue.textContent = scaleSlider.value + "%";
-      showCardCb.checked = s.showCard !== false;
-      showTitleCb.checked = s.showTitle !== false;
-      showRefCb.checked = s.showReference !== false;
-      const c = s.customColors || DEFAULTS.customColors;
-      colorBg.value = c.bg || "#0a0a14";
-      colorText.value = c.text || "#ffffff";
-      colorAccent.value = c.accent || "#a78bfa";
-      applyScriptureSettings(s);
-      bgImageData = s.bgImage || null;
-      updateBgUI();
-      updateThemeUI();
-    }
-    function updateThemeUI() {
-      customColorsSection.style.display = themeSel.value === "custom" ? "" : "none";
-    }
-    function updateBgUI() {
-      if (bgImageData) {
-        bgImageName.textContent = "Custom image in use";
-        btnBgClear.style.display = "";
-      } else {
-        bgImageName.textContent = "None \u2014 using theme colour";
-        btnBgClear.style.display = "none";
-      }
-    }
-    function loadBgImage(file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const maxW = 1920;
-          const ratio = Math.min(1, maxW / img.width);
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.round(img.width * ratio);
-          canvas.height = Math.round(img.height * ratio);
-          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-          try {
-            bgImageData = canvas.toDataURL("image/jpeg", 0.85);
-          } catch (_) {
-            bgImageData = e.target.result;
-          }
-          updateBgUI();
-          saveCurrentSettings();
-          session.resendIfLive();
-          setStatus("Background image set.", "success");
-        };
-        img.onerror = () => setStatus("That image could not be read.", "error");
-        img.src = e.target.result;
-      };
-      reader.onerror = () => setStatus("That image could not be read.", "error");
-      reader.readAsDataURL(file);
-    }
-    function readSettings() {
-      return {
-        theme: themeSel.value,
-        position: positionSel.value,
-        fontSize: fontsizeSel.value,
-        animation: animationSel.value,
-        font: fontSel.value,
-        italic: isItalic,
-        opacity: parseInt(opacitySlider.value, 10),
-        scale: parseInt(scaleSlider.value, 10),
-        showCard: showCardCb.checked,
-        showTitle: showTitleCb.checked,
-        showReference: showRefCb.checked,
-        bgMode: bgImageData ? "image" : "color",
-        bgImage: bgImageData,
-        customColors: { bg: colorBg.value, text: colorText.value, accent: colorAccent.value }
-      };
-    }
-    [themeSel, positionSel, fontsizeSel, animationSel, fontSel].forEach((el) => el.addEventListener("change", () => {
-      if (el === themeSel) updateThemeUI();
-      saveCurrentSettings();
-      session.resendIfLive();
-    }));
-    btnItalic.addEventListener("click", () => {
-      isItalic = !isItalic;
-      btnItalic.classList.toggle("active", isItalic);
-      saveCurrentSettings();
-      session.resendIfLive();
-    });
-    opacitySlider.addEventListener("input", () => {
-      opacityValue.textContent = opacitySlider.value + "%";
-      saveCurrentSettings();
-      session.resendIfLive();
-    });
-    scaleSlider.addEventListener("input", () => {
-      scaleValue.textContent = scaleSlider.value + "%";
-      saveCurrentSettings();
-      session.resendIfLive();
-    });
-    [showCardCb, showTitleCb, showRefCb].forEach((cb) => cb.addEventListener("change", () => {
-      saveCurrentSettings();
-      session.resendIfLive();
-    }));
-    [colorBg, colorText, colorAccent].forEach((el) => el.addEventListener("input", () => {
-      saveCurrentSettings();
-      session.resendIfLive();
-    }));
-    btnBgImage.addEventListener("click", () => bgImageInput.click());
-    bgImageInput.addEventListener("change", (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (file) loadBgImage(file);
-      bgImageInput.value = "";
-    });
-    btnBgClear.addEventListener("click", () => {
-      bgImageData = null;
-      updateBgUI();
-      saveCurrentSettings();
-      session.resendIfLive();
-      setStatus("Background image removed.", "");
-    });
-    return { readSettings, saveCurrentSettings, applySettings };
-  }
-
-  // src/dock/scripture-tab.js
-  function initScriptureTab({ session, scripture, setStatus, saveCurrentSettings, refresh }) {
-    const refInput = $("ref-input"), btnLookup = $("btn-lookup"), bookSuggest = $("book-suggest"), languageSel = $("language-sel"), translationSel = $("translation-sel"), bookSel = $("book-sel"), chapterSel = $("chapter-sel"), verseSel = $("verse-sel"), btnGoto = $("btn-goto"), quickBooks = $("quick-books"), autoShowCb = $("auto-show-cb"), verseText = $("verse-text"), scriptureSearch = $("scripture-search"), btnScriptureSearch = $("btn-scripture-search"), searchResults = $("search-results"), randomScope = $("random-scope"), btnRandom = $("btn-random");
-    const qrBook = $("qr-book"), qrChapter = $("qr-chapter"), qrVerse = $("qr-verse"), qrGo = $("qr-go"), qrSuggest = $("qr-book-suggest"), qrHint = $("qr-hint");
-    let currentPlainRef = "";
-    let currentRefLabel = "";
-    let suggestIdx = -1;
-    let looking = false;
-    const QUICK_BOOKS = [
-      "John",
-      "Romans",
-      "Psalms",
-      "Matthew",
-      "Genesis",
-      "Proverbs",
-      "Isaiah",
-      "Hebrews",
-      "Acts",
-      "Revelation"
-    ];
-    function currentTranslation() {
-      return translationSel.value || "KJV";
-    }
-    function buildLanguageSelect() {
-      LANGUAGES.forEach((lang) => {
-        const o = document.createElement("option");
-        o.value = lang;
-        o.textContent = lang;
-        languageSel.appendChild(o);
-      });
-      languageSel.value = "English";
-    }
-    function buildTranslationSelect(keepKey) {
-      const lang = languageSel.value;
-      translationSel.innerHTML = "";
-      TRANSLATIONS.filter((t) => t.lang === lang).forEach((t) => {
-        const o = document.createElement("option");
-        o.value = t.key;
-        o.textContent = t.key + " \u2014 " + t.label;
-        translationSel.appendChild(o);
-      });
-      if (keepKey && [...translationSel.options].some((o) => o.value === keepKey)) {
-        translationSel.value = keepKey;
-      }
-    }
-    function buildBookSelect() {
-      BIBLE_BOOKS.forEach(([name], i) => {
-        const o = document.createElement("option");
-        o.value = String(i + 1);
-        o.textContent = name;
-        bookSel.appendChild(o);
-      });
-    }
-    function buildQuickBooks() {
-      QUICK_BOOKS.forEach((name) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "quick-book";
-        b.textContent = name;
-        b.addEventListener("click", () => {
-          const idx = BIBLE_BOOKS.findIndex((x) => x[0] === name);
-          if (idx === -1) return;
-          bookSel.value = String(idx + 1);
-          onBookChange();
-          document.querySelectorAll(".quick-book").forEach((x) => x.classList.remove("active"));
-          b.classList.add("active");
-        });
-        quickBooks.appendChild(b);
-      });
-    }
-    function onBookChange() {
-      const id = parseInt(bookSel.value, 10);
-      chapterSel.innerHTML = "";
-      verseSel.innerHTML = "";
-      if (!id) {
-        chapterSel.disabled = verseSel.disabled = btnGoto.disabled = true;
-        return;
-      }
-      const chapters = BIBLE_BOOKS[id - 1][2];
-      for (let c = 1; c <= chapters; c++) {
-        const o = document.createElement("option");
-        o.value = String(c);
-        o.textContent = String(c);
-        chapterSel.appendChild(o);
-      }
-      chapterSel.disabled = false;
-      onChapterChange();
-    }
-    async function onChapterChange() {
-      const bookId = parseInt(bookSel.value, 10);
-      const chapter = parseInt(chapterSel.value, 10);
-      if (!bookId || !chapter) return;
-      verseSel.innerHTML = '<option value="1">1</option>';
-      verseSel.disabled = true;
-      btnGoto.disabled = true;
-      const count = await scripture.fetchVerseCount(currentTranslation(), bookId, chapter) || 50;
-      verseSel.innerHTML = "";
-      for (let v = 1; v <= count; v++) {
-        const o = document.createElement("option");
-        o.value = String(v);
-        o.textContent = String(v);
-        verseSel.appendChild(o);
-      }
-      verseSel.disabled = false;
-      btnGoto.disabled = false;
-    }
-    function gotoFromPickers() {
-      const bookId = parseInt(bookSel.value, 10);
-      if (!bookId) return;
-      const ref = buildReference(
-        BIBLE_BOOKS[bookId - 1][0],
-        chapterSel.value,
-        verseSel.value
-      );
-      refInput.value = ref;
-      lookup();
-    }
-    async function lookup(refOverride) {
-      if (looking) return;
-      const ref = (refOverride !== void 0 ? refOverride : refInput.value).trim();
-      if (!ref) {
-        setStatus("Enter a reference first.", "error");
-        return;
-      }
-      looking = true;
-      btnLookup.disabled = true;
-      setStatus("Looking up " + ref + "\u2026", "loading");
-      const result = await scripture.fetchVerse(ref, currentTranslation());
-      looking = false;
-      btnLookup.disabled = false;
-      if (result.error) {
-        setStatus(result.error, "error");
-        return;
-      }
-      refInput.value = result.rawRef;
-      verseText.value = result.text;
-      currentPlainRef = result.rawRef;
-      currentRefLabel = result.reference;
-      hideSuggest();
-      syncPickersTo(result);
-      refresh();
-      setStatus(result.reference, "success");
-      if (autoShowCb.checked) session.show();
-    }
-    async function stepVerse(dir) {
-      if (!currentPlainRef) return;
-      setStatus(dir > 0 ? "Next verse\u2026" : "Previous verse\u2026", "loading");
-      const next = await stepReference(currentPlainRef, dir, (bookId, chapter) => scripture.fetchVerseCount(currentTranslation(), bookId, chapter));
-      if (!next) {
-        setStatus("That is the end of the Bible.", "");
-        return;
-      }
-      const result = await scripture.fetchVerse(next, currentTranslation());
-      if (result.error) {
-        setStatus(result.error, "error");
-        return;
-      }
-      refInput.value = result.rawRef;
-      verseText.value = result.text;
-      currentPlainRef = result.rawRef;
-      currentRefLabel = result.reference;
-      syncPickersTo(result);
-      refresh();
-      setStatus(result.reference, "success");
-      if (session.isLive || autoShowCb.checked) session.show();
-    }
-    function syncPickersTo(result) {
-      if (!result.bookId) return;
-      const book = BIBLE_BOOKS[result.bookId - 1][0];
-      qrBook.value = book;
-      qrChapter.value = result.chapter;
-      qrVerse.value = result.endVerse ? `${result.verse}-${result.endVerse}` : result.verse;
-      qrBookIdx = result.bookId - 1;
-      bookSel.value = String(result.bookId);
-      const chapters = BIBLE_BOOKS[result.bookId - 1][2];
-      if (chapterSel.options.length !== chapters) {
-        chapterSel.innerHTML = "";
-        for (let c = 1; c <= chapters; c++) {
-          const o = document.createElement("option");
-          o.value = String(c);
-          o.textContent = String(c);
-          chapterSel.appendChild(o);
-        }
-        chapterSel.disabled = false;
-      }
-      chapterSel.value = String(result.chapter);
-    }
-    function showSuggest(names) {
-      bookSuggest.innerHTML = "";
-      suggestIdx = -1;
-      if (!names.length) {
-        hideSuggest();
-        return;
-      }
-      names.forEach((name) => {
-        const li = document.createElement("li");
-        li.textContent = name;
-        li.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          refInput.value = name + " ";
-          hideSuggest();
-          refInput.focus();
-        });
-        bookSuggest.appendChild(li);
-      });
-      bookSuggest.classList.remove("hidden");
-    }
-    function hideSuggest() {
-      bookSuggest.classList.add("hidden");
-      bookSuggest.innerHTML = "";
-      suggestIdx = -1;
-    }
-    function moveSuggest(dir) {
-      const items = [...bookSuggest.querySelectorAll("li")];
-      if (!items.length) return;
-      items.forEach((i) => i.classList.remove("highlight"));
-      suggestIdx = (suggestIdx + dir + items.length) % items.length;
-      items[suggestIdx].classList.add("highlight");
-      items[suggestIdx].scrollIntoView({ block: "nearest" });
-    }
-    async function runScriptureSearch() {
-      const q = scriptureSearch.value.trim();
-      if (!q) {
-        setStatus("Type something to search for.", "error");
-        return;
-      }
-      setStatus("Searching " + currentTranslation() + "\u2026", "loading");
-      const results = await scripture.searchScripture(currentTranslation(), q);
-      if (results.error) {
-        setStatus(results.error, "error");
-        return;
-      }
-      if (!results.length) {
-        searchResults.classList.add("hidden");
-        setStatus('No results for "' + q + '".', "");
-        return;
-      }
-      searchResults.innerHTML = "";
-      results.forEach((r) => {
-        const ref = buildReference(r.book, r.chapter, r.verse);
-        const li = document.createElement("li");
-        li.className = "search-result";
-        const refSpan = document.createElement("span");
-        refSpan.className = "search-result-ref";
-        refSpan.textContent = ref;
-        const txtSpan = document.createElement("span");
-        txtSpan.className = "search-result-text";
-        txtSpan.innerHTML = highlightMatch(r.text, q);
-        li.appendChild(refSpan);
-        li.appendChild(txtSpan);
-        li.addEventListener("click", () => {
-          refInput.value = ref;
-          lookup(ref);
-        });
-        searchResults.appendChild(li);
-      });
-      searchResults.classList.remove("hidden");
-      setStatus(results.length + " result" + (results.length !== 1 ? "s" : "") + ".", "success");
-    }
-    async function pickRandom() {
-      setStatus("Picking a verse\u2026", "loading");
-      const r = await scripture.randomReference(currentTranslation(), randomScope.value);
-      if (r.error) {
-        setStatus(r.error, "error");
-        return;
-      }
-      refInput.value = r.reference;
-      await lookup(r.reference);
-    }
-    btnLookup.addEventListener("click", () => lookup());
-    refInput.addEventListener("input", () => {
-      const val = refInput.value;
-      if (/\d/.test(val)) {
-        hideSuggest();
-        return;
-      }
-      showSuggest(searchBooks(val));
-    });
-    refInput.addEventListener("keydown", (e) => {
-      const open = !bookSuggest.classList.contains("hidden");
-      if (e.key === "ArrowDown" && open) {
-        e.preventDefault();
-        moveSuggest(1);
-      } else if (e.key === "ArrowUp" && open) {
-        e.preventDefault();
-        moveSuggest(-1);
-      } else if (e.key === "Escape") {
-        hideSuggest();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const hit = bookSuggest.querySelector("li.highlight");
-        if (open && hit) {
-          refInput.value = hit.textContent + " ";
-          hideSuggest();
-        } else lookup();
-      }
-    });
-    refInput.addEventListener("blur", () => setTimeout(hideSuggest, 120));
-    let qrBookIdx = -1;
-    function qrSetHint(msg, isError) {
-      qrHint.textContent = msg;
-      qrHint.classList.toggle("is-error", !!isError);
-    }
-    function qrResetHint() {
-      qrSetHint("Type the book, chapter and verse \u2014 it jumps between boxes for you.", false);
-    }
-    function qrHideSuggest() {
-      qrSuggest.classList.add("hidden");
-      qrSuggest.innerHTML = "";
-    }
-    function qrShowSuggest(names) {
-      qrSuggest.innerHTML = "";
-      if (!names.length) {
-        qrHideSuggest();
-        return;
-      }
-      names.forEach((name, i) => {
-        const li = document.createElement("li");
-        li.textContent = name;
-        if (i === 0) li.classList.add("highlight");
-        li.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          qrPickBook(name);
-        });
-        qrSuggest.appendChild(li);
-      });
-      qrSuggest.classList.remove("hidden");
-    }
-    function qrMoveSuggest(dir) {
-      const items = [...qrSuggest.querySelectorAll("li")];
-      if (!items.length) return;
-      let i = items.findIndex((el) => el.classList.contains("highlight"));
-      items.forEach((el) => el.classList.remove("highlight"));
-      i = Math.max(0, Math.min(items.length - 1, i === -1 ? 0 : i + dir));
-      items[i].classList.add("highlight");
-    }
-    function qrPickBook(name) {
-      qrBook.value = name;
-      qrBookIdx = bookIndexOf(name);
-      qrHideSuggest();
-      qrSetHint(qrBookIdx !== -1 ? `${BIBLE_BOOKS[qrBookIdx][0]} \u2014 ${BIBLE_BOOKS[qrBookIdx][2]} chapters` : `No book called "${name}".`, qrBookIdx === -1);
-      if (qrBookIdx !== -1) qrChapter.focus();
-    }
-    function qrResolveBook() {
-      qrBookIdx = bookIndexOf(qrBook.value);
-      return qrBookIdx;
-    }
-    function qrLookup() {
-      if (qrResolveBook() === -1) {
-        qrSetHint(qrBook.value.trim() ? `No book called "${qrBook.value.trim()}".` : "Type a book name first.", true);
-        qrBook.focus();
-        return;
-      }
-      const [name, , chapters] = BIBLE_BOOKS[qrBookIdx];
-      const ch = parseInt(qrChapter.value, 10);
-      if (!ch || ch < 1 || ch > chapters) {
-        qrSetHint(`${name} has ${chapters} chapter${chapters !== 1 ? "s" : ""}.`, true);
-        qrChapter.focus();
-        qrChapter.select();
-        return;
-      }
-      const raw = qrVerse.value.trim();
-      const m = raw.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
-      if (!m) {
-        qrSetHint("Enter a verse number, or a range like 28-30.", true);
-        qrVerse.focus();
-        qrVerse.select();
-        return;
-      }
-      qrResetHint();
-      const ref = buildReference(
-        name,
-        ch,
-        parseInt(m[1], 10),
-        m[2] ? parseInt(m[2], 10) : null
-      );
-      refInput.value = ref;
-      lookup(ref);
-    }
-    qrBook.addEventListener("input", () => {
-      qrBookIdx = -1;
-      qrShowSuggest(searchBooks(qrBook.value.trim()));
-    });
-    qrBook.addEventListener("keydown", (e) => {
-      const open = !qrSuggest.classList.contains("hidden");
-      if (e.key === "ArrowDown" && open) {
-        e.preventDefault();
-        qrMoveSuggest(1);
-      } else if (e.key === "ArrowUp" && open) {
-        e.preventDefault();
-        qrMoveSuggest(-1);
-      } else if (e.key === "Escape") {
-        qrHideSuggest();
-      } else if (e.key === "Enter" || e.key === "Tab") {
-        const hit = open ? qrSuggest.querySelector("li.highlight") : null;
-        if (hit) {
-          e.preventDefault();
-          qrPickBook(hit.textContent);
-        } else if (e.key === "Enter") {
-          e.preventDefault();
-          qrPickBook(qrBook.value.trim());
-        }
-      }
-    });
-    qrBook.addEventListener("blur", () => setTimeout(() => {
-      qrHideSuggest();
-      if (qrBook.value.trim() && qrResolveBook() === -1) {
-        qrSetHint(`No book called "${qrBook.value.trim()}".`, true);
-      }
-    }, 120));
-    qrChapter.addEventListener("input", () => {
-      qrChapter.value = qrChapter.value.replace(/\D/g, "");
-      if (qrResolveBook() === -1) return;
-      const chapters = BIBLE_BOOKS[qrBookIdx][2];
-      const n = parseInt(qrChapter.value, 10);
-      if (!n) return;
-      if (n > chapters) {
-        qrSetHint(`${BIBLE_BOOKS[qrBookIdx][0]} has ${chapters} chapters.`, true);
-        return;
-      }
-      qrResetHint();
-      if (n * 10 > chapters) qrVerse.focus();
-    });
-    qrChapter.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        qrVerse.focus();
-      } else if (e.key === "Backspace" && !qrChapter.value) {
-        qrBook.focus();
-      }
-    });
-    qrVerse.addEventListener("input", () => {
-      qrVerse.value = qrVerse.value.replace(/[^\d-]/g, "");
-    });
-    qrVerse.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        qrLookup();
-      } else if (e.key === "Backspace" && !qrVerse.value) {
-        qrChapter.focus();
-      }
-    });
-    qrGo.addEventListener("click", qrLookup);
-    qrResetHint();
-    languageSel.addEventListener("change", () => {
-      buildTranslationSelect();
-      saveCurrentSettings();
-    });
-    translationSel.addEventListener("change", () => {
-      saveCurrentSettings();
-      if (chapterSel.value) onChapterChange();
-      if (currentPlainRef) lookup(currentPlainRef);
-    });
-    bookSel.addEventListener("change", onBookChange);
-    chapterSel.addEventListener("change", onChapterChange);
-    btnGoto.addEventListener("click", gotoFromPickers);
-    verseText.addEventListener("input", refresh);
-    autoShowCb.addEventListener("change", saveCurrentSettings);
-    btnScriptureSearch.addEventListener("click", runScriptureSearch);
-    scriptureSearch.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        runScriptureSearch();
-      }
-    });
-    btnRandom.addEventListener("click", pickRandom);
-    buildLanguageSelect();
-    buildTranslationSelect("KJV");
-    buildBookSelect();
-    buildQuickBooks();
-    return {
-      getContent: () => ({ body: verseText.value.trim(), reference: currentRefLabel }),
-      hasText: () => verseText.value.trim().length > 0,
-      plainRef: () => currentPlainRef,
-      step: stepVerse,
-      buildTranslationSelect,
-      setLanguage(lang) {
-        if (LANGUAGES.includes(lang)) languageSel.value = lang;
       },
-      setAutoShow(on) {
-        autoShowCb.checked = !!on;
+      step,
+      markShown() {
+        shownIdx = activeSlideIdx === null ? -1 : activeSlideIdx;
       },
-      autoShow: () => autoShowCb.checked
+      resetPosition() {
+        shownIdx = -1;
+      },
+      /** Re-render after the library changed underneath us (bulk actions, folder attach). */
+      refreshList() {
+        if (activeSongId && !getSong()) resetSelection();
+        render();
+      }
     };
   }
 
@@ -1871,305 +2018,62 @@ ${DELIMITER}
     return [];
   }
 
-  // src/songs/duplicates.js
-  function findDuplicateGroups(songs) {
-    const groups = /* @__PURE__ */ new Map();
-    for (const song of songs) {
-      const key = normalizeTitle(song.title);
-      if (!key) continue;
-      groups.set(key, [...groups.get(key) || [], song]);
-    }
-    return [...groups.values()].filter((group) => group.length > 1);
+  // src/dock/import-panel.js
+  var SONG_FILE = /[.](txt|json|csv|tsv)$/i;
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => reject(new Error("Read failed"));
+      reader.readAsText(file);
+    });
   }
-  function pickRemovals(groups) {
-    const ids = /* @__PURE__ */ new Set();
-    for (const group of groups) {
-      const keeper = group.reduce((best, s) => s.slides.length > best.slides.length ? s : best, group[0]);
-      for (const s of group) if (s.id !== keeper.id) ids.add(s.id);
+  function initImportPanel({ library, setStatus, report: report2, onImported }) {
+    const panel = $("import-panel"), title = $("import-panel-title"), hint = $("import-panel-hint"), listEl = $("import-song-list"), fileInput = $("import-file-input"), folderInput = $("import-folder-input");
+    let pending = [];
+    function close() {
+      panel.classList.add("hidden");
+      listEl.replaceChildren();
+      pending = [];
+      fileInput.value = "";
+      folderInput.value = "";
     }
-    return ids;
-  }
-
-  // src/dock/songs-tab.js
-  function initSongsTab({ session, library, setStatus, refresh, report: report2 }) {
-    const libSearch = $("lib-search"), btnNewSong = $("btn-new-song"), songList = $("song-list"), editorTitle = $("editor-title"), songTitleInput = $("song-title-input"), slideList = $("slide-list"), slideTextarea = $("slide-textarea"), btnAddSlide = $("btn-add-slide"), btnUpdateSlide = $("btn-update-slide"), btnDeleteSlide = $("btn-delete-slide"), btnSaveSong = $("btn-save-song"), btnDeleteSong = $("btn-delete-song"), btnExport = $("btn-export"), btnRemoveDuplicates = $("btn-remove-duplicates"), btnClearAllSongs = $("btn-clear-all-songs"), btnImportFile = $("btn-import-file"), btnImportFolder = $("btn-import-folder"), importFileInput = $("import-file-input"), importFolderInput = $("import-folder-input"), importPanel = $("import-panel"), importPanelTitle = $("import-panel-title"), importPanelHint = $("import-panel-hint"), importSongList = $("import-song-list"), btnImportConfirm = $("btn-import-confirm"), btnImportCancel = $("btn-import-cancel"), btnImportClose = $("btn-import-close");
-    let activeSongId = null;
-    let activeSlideIdx = null;
-    let currentSlideIdx = -1;
-    let libFilter = "";
-    let libSearchMode = "title";
-    let _pendingImport = [];
-    const getActiveSong = () => library.get(activeSongId);
-    const STOP_WORDS = /* @__PURE__ */ new Set([
-      "verse",
-      "verse1",
-      "verse2",
-      "verse3",
-      "verse4",
-      "chorus",
-      "prechorus",
-      "pre-chorus",
-      "bridge",
-      "intro",
-      "outro",
-      "tag",
-      "hook",
-      "refrain",
-      "repeat",
-      "interlude",
-      "coda",
-      "ending",
-      "instrumental"
-    ]);
-    function stripStopWords(text) {
-      return text.toLowerCase().split(/\s+/).filter((w) => !STOP_WORDS.has(w.replace(/[^a-z0-9]/g, ""))).join(" ");
-    }
-    function lyricExcerpt(song, q) {
-      for (const slide of song.slides) {
-        const idx = slide.toLowerCase().indexOf(q);
-        if (idx === -1) continue;
-        const start = Math.max(0, idx - 30);
-        const end = Math.min(slide.length, idx + q.length + 30);
-        return highlightMatch(
-          (start > 0 ? "\u2026" : "") + slide.slice(start, end) + (end < slide.length ? "\u2026" : ""),
-          q
-        );
-      }
-      return null;
-    }
-    function renderSongList() {
-      const q = libFilter.toLowerCase().trim();
-      songList.innerHTML = "";
-      const dupIds = new Set(findDuplicateGroups(library.list()).flat().map((s) => s.id));
-      const filtered = library.list().filter((s) => {
-        if (!q) return true;
-        if (libSearchMode === "lyrics") {
-          return s.slides.some((sl) => sl.toLowerCase().includes(q) || stripStopWords(sl).includes(q));
-        }
-        if (s.title.toLowerCase().includes(q)) return true;
-        if (s.altTitle && s.altTitle.toLowerCase().includes(q)) return true;
-        return false;
-      });
-      if (filtered.length === 0 && q) {
-        const empty = document.createElement("li");
-        empty.className = "song-list-empty";
-        empty.textContent = 'No songs match "' + q + '"';
-        songList.appendChild(empty);
+    function showPreview(incoming, sourceLabel) {
+      if (!incoming.length) {
+        setStatus("No songs found in those files.", "error");
         return;
       }
-      filtered.forEach((song) => {
+      const existing = new Set(library.list().map((s) => normalizeTitle(s.title)));
+      pending = incoming.map((song) => {
+        const exists = existing.has(normalizeTitle(song.title));
+        return { ...song, exists, selected: !exists };
+      });
+      const newCount = pending.filter((s) => !s.exists).length;
+      title.textContent = "Import preview - " + sourceLabel;
+      hint.textContent = pending.length + " found, " + newCount + " new, " + (pending.length - newCount) + " already exist";
+      listEl.replaceChildren(...pending.map((song, idx) => {
         const li = document.createElement("li");
-        li.className = "song-item" + (song.id === activeSongId ? " active" : "") + (dupIds.has(song.id) ? " is-duplicate" : "");
-        const titleMatch = q && libSearchMode === "title" && song.title.toLowerCase().includes(q);
-        const altMatch = q && libSearchMode === "title" && song.altTitle && song.altTitle.toLowerCase().includes(q);
-        const lyricMatch = q && libSearchMode === "lyrics" && song.slides.some((sl) => sl.toLowerCase().includes(q) || stripStopWords(sl).includes(q));
-        const titleSpan = document.createElement("span");
-        titleSpan.className = "song-item-title";
-        if (titleMatch) titleSpan.innerHTML = highlightMatch(song.title || "(Untitled)", q);
-        else titleSpan.textContent = song.title || "(Untitled)";
-        if (dupIds.has(song.id)) {
-          const badge = document.createElement("span");
-          badge.className = "song-item-dup-badge";
-          badge.textContent = "DUPLICATE";
-          titleSpan.appendChild(badge);
-        }
-        const countSpan = document.createElement("span");
-        countSpan.className = "song-item-count";
-        countSpan.textContent = song.slides.length + " slide" + (song.slides.length !== 1 ? "s" : "");
-        const deleteBtn = document.createElement("button");
-        deleteBtn.className = "song-item-delete";
-        deleteBtn.type = "button";
-        deleteBtn.textContent = "\u2715";
-        deleteBtn.title = "Delete this song";
-        deleteBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (confirm('Delete "' + (song.title || "Untitled") + '"? This cannot be undone.')) {
-            deleteSongById(song.id);
-          }
+        li.className = song.exists ? "conflict" : "";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = "isc-" + idx;
+        box.checked = song.selected;
+        box.addEventListener("change", () => {
+          pending = pending.map((s, i) => i === idx ? { ...s, selected: box.checked } : s);
         });
-        li.appendChild(titleSpan);
-        li.appendChild(countSpan);
-        li.appendChild(deleteBtn);
-        if (song.altTitle) {
-          const alias = document.createElement("span");
-          alias.className = "song-item-alias";
-          if (altMatch) alias.innerHTML = "\u{1F4C4} " + highlightMatch(song.altTitle, q);
-          else alias.textContent = "\u{1F4C4} " + song.altTitle;
-          li.appendChild(alias);
-        }
-        if (lyricMatch) {
-          const excerpt = lyricExcerpt(song, q);
-          if (excerpt) {
-            const span = document.createElement("span");
-            span.className = "song-item-excerpt";
-            span.innerHTML = excerpt;
-            li.appendChild(span);
-          }
-        }
-        li.addEventListener("click", () => loadSongIntoEditor(song.id));
-        songList.appendChild(li);
-      });
-    }
-    function loadSongIntoEditor(id) {
-      activeSongId = id;
-      activeSlideIdx = null;
-      currentSlideIdx = -1;
-      const song = getActiveSong();
-      if (!song) return;
-      editorTitle.textContent = "Editor \u2014 " + (song.title || "Untitled");
-      songTitleInput.value = song.title || "";
-      btnDeleteSong.disabled = false;
-      slideTextarea.value = "";
-      btnUpdateSlide.disabled = true;
-      btnDeleteSlide.disabled = true;
-      renderSlideChips();
-      renderSongList();
-      refresh();
-    }
-    function renderSlideChips() {
-      slideList.innerHTML = "";
-      const song = getActiveSong();
-      if (!song) return;
-      song.slides.forEach((text, idx) => {
-        const chip = document.createElement("button");
-        chip.className = "slide-chip" + (idx === activeSlideIdx ? " active" : "");
-        chip.textContent = (text.split("\n")[0] || "Slide " + (idx + 1)).slice(0, 30);
-        chip.title = text;
-        chip.addEventListener("click", () => selectSlide(idx));
-        slideList.appendChild(chip);
-      });
-    }
-    function selectSlide(idx) {
-      const song = getActiveSong();
-      if (!song) return;
-      activeSlideIdx = idx;
-      slideTextarea.value = song.slides[idx] || "";
-      btnUpdateSlide.disabled = false;
-      btnDeleteSlide.disabled = false;
-      renderSlideChips();
-      refresh();
-    }
-    function newSong() {
-      activeSongId = activeSlideIdx = null;
-      currentSlideIdx = -1;
-      editorTitle.textContent = "Editor \u2014 New Song";
-      songTitleInput.value = "";
-      slideList.innerHTML = "";
-      slideTextarea.value = "";
-      btnDeleteSong.disabled = true;
-      btnUpdateSlide.disabled = true;
-      btnDeleteSlide.disabled = true;
-      renderSongList();
-      refresh();
-    }
-    async function saveSong() {
-      const title = songTitleInput.value.trim() || "Untitled";
-      const existing = getActiveSong();
-      const saved = await library.save({ ...existing || { slides: [] }, id: existing?.id, title });
-      activeSongId = saved.id;
-      editorTitle.textContent = "Editor \u2014 " + title;
-      btnDeleteSong.disabled = false;
-      renderSongList();
-      renderSlideChips();
-      setStatus("Song saved.", "success");
-    }
-    async function deleteSongById(id) {
-      const song = library.get(id);
-      if (!song) return;
-      await library.remove(id);
-      if (id === activeSongId) newSong();
-      else renderSongList();
-      setStatus('Deleted "' + (song.title || "Untitled") + '".', "");
-    }
-    async function clearAllSongs() {
-      const count = library.list().length;
-      if (count === 0) {
-        setStatus("Library is already empty.", "");
-        return;
-      }
-      const inFolder = library.mode() === "folder";
-      if (!confirm("Delete ALL " + count + " song" + (count !== 1 ? "s" : "") + " from the library?\n\n" + (inFolder ? "Their files in the library folder will be deleted too. " : "") + "This cannot be undone. If you have not backed up, click Cancel, use the \u2193 JSON button first, then come back.")) return;
-      if (prompt("To confirm, type DELETE below:") !== "DELETE") {
-        setStatus("Clear cancelled \u2014 nothing was deleted.", "");
-        return;
-      }
-      await library.clearAll();
-      activeSongId = null;
-      newSong();
-      setStatus("Library cleared. Import your songs again to bring them back.", "success");
-    }
-    async function removeDuplicates() {
-      const groups = findDuplicateGroups(library.list());
-      if (groups.length === 0) {
-        setStatus("No duplicate songs found.", "");
-        return;
-      }
-      const totalExtra = groups.reduce((n, g) => n + (g.length - 1), 0);
-      if (!confirm("Found " + groups.length + " title" + (groups.length !== 1 ? "s" : "") + " with duplicates (" + totalExtra + " extra cop" + (totalExtra !== 1 ? "ies" : "y") + ").\n\nFor each, the version with the most slides will be kept and the rest deleted. This cannot be undone.")) return;
-      const ids = pickRemovals(groups);
-      const activeRemoved = activeSongId && ids.has(activeSongId);
-      await library.removeMany([...ids]);
-      if (activeRemoved) newSong();
-      else renderSongList();
-      setStatus("Removed " + ids.size + " duplicate song" + (ids.size !== 1 ? "s" : "") + ".", "success");
-    }
-    async function addSlide() {
-      const text = slideTextarea.value;
-      if (!text.trim()) {
-        setStatus("Enter slide text first.", "error");
-        return;
-      }
-      const existing = getActiveSong();
-      const saved = await library.save({
-        ...existing || { title: songTitleInput.value.trim() || "Untitled" },
-        id: existing?.id,
-        slides: [...existing ? existing.slides : [], text]
-      });
-      activeSongId = saved.id;
-      activeSlideIdx = saved.slides.length - 1;
-      btnDeleteSong.disabled = false;
-      slideTextarea.value = "";
-      renderSlideChips();
-      renderSongList();
-      refresh();
-      setStatus("Slide added.", "success");
-    }
-    async function updateSlide() {
-      const song = getActiveSong();
-      if (!song || activeSlideIdx === null) return;
-      await library.save({ ...song, slides: song.slides.map((s, i) => i === activeSlideIdx ? slideTextarea.value : s) });
-      renderSlideChips();
-      if (session.isLive && session.liveTab === "songs" && currentSlideIdx === activeSlideIdx) session.resendIfLive();
-      setStatus("Slide updated.", "success");
-    }
-    async function deleteSlide() {
-      const song = getActiveSong();
-      if (!song || activeSlideIdx === null) return;
-      await library.save({ ...song, slides: song.slides.filter((_, i) => i !== activeSlideIdx) });
-      activeSlideIdx = null;
-      slideTextarea.value = "";
-      btnUpdateSlide.disabled = true;
-      btnDeleteSlide.disabled = true;
-      renderSlideChips();
-      renderSongList();
-      refresh();
-      setStatus("Slide deleted.", "");
-    }
-    async function confirmImport() {
-      const toAdd = _pendingImport.filter((s) => s._selected);
-      if (toAdd.length === 0) {
-        setStatus("No songs selected.", "error");
-        return;
-      }
-      const { added, replaced } = await library.upsertByTitle(
-        toAdd.map(({ title, altTitle, slides }) => ({ title, altTitle, slides }))
-      );
-      renderSongList();
-      closeImportPanel();
-      const parts = [];
-      if (added) parts.push(added + " added");
-      if (replaced) parts.push(replaced + " updated");
-      setStatus(parts.join(", ") + ".", "success");
+        const label = document.createElement("label");
+        label.htmlFor = box.id;
+        const name = document.createElement("span");
+        name.className = "isc-title";
+        name.textContent = song.title;
+        const meta = document.createElement("span");
+        meta.className = "isc-meta";
+        meta.textContent = song.slides.length + " slides" + (song.exists ? " - already exists" : "");
+        label.append(name, meta);
+        li.append(box, label);
+        return li;
+      }));
+      panel.classList.remove("hidden");
     }
     async function processFiles(files, sourceLabel) {
       const all = [];
@@ -2187,159 +2091,44 @@ ${DELIMITER}
         setStatus(failedMessage, "error");
         return;
       }
-      showImportPreview(all, sourceLabel);
+      showPreview(all, sourceLabel);
       if (failed.length) setStatus(failedMessage, "error");
     }
-    function navigateSlide(dir) {
-      const song = getActiveSong();
-      if (!song || song.slides.length === 0) return;
-      let target = currentSlideIdx < 0 ? dir > 0 ? 0 : song.slides.length - 1 : currentSlideIdx + dir;
-      target = Math.max(0, Math.min(song.slides.length - 1, target));
-      activeSlideIdx = currentSlideIdx = target;
-      renderSlideChips();
-      refresh();
-      session.show();
-    }
-    function exportSongs() {
-      if (library.list().length === 0) {
-        setStatus("No songs to export.", "error");
+    async function confirmImport() {
+      const chosen = pending.filter((s) => s.selected);
+      if (!chosen.length) {
+        setStatus("No songs selected.", "error");
         return;
       }
-      const blob = new Blob([JSON.stringify({ version: 1, songs: library.list() }, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "stage-songs-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setStatus("Exported " + library.list().length + " songs.", "success");
+      const { added, replaced } = await library.upsertByTitle(
+        chosen.map(({ title: t, altTitle, slides }) => ({ title: t, altTitle, slides }))
+      );
+      close();
+      onImported();
+      const parts = [];
+      if (added) parts.push(added + " added");
+      if (replaced) parts.push(replaced + " updated");
+      setStatus(parts.join(", ") + ".", "success");
     }
-    function showImportPreview(incoming, sourceLabel) {
-      if (!incoming || incoming.length === 0) {
-        setStatus("No songs found in those files.", "error");
-        return;
-      }
-      _pendingImport = incoming.map((s) => ({
-        ...s,
-        _exists: library.list().some((e) => normalizeTitle(e.title) === normalizeTitle(s.title)),
-        _selected: true
-      }));
-      const newCount = _pendingImport.filter((s) => !s._exists).length;
-      const conCount = _pendingImport.filter((s) => s._exists).length;
-      importPanelTitle.textContent = "Import Preview \u2014 " + sourceLabel;
-      importPanelHint.textContent = _pendingImport.length + " found \xB7 " + newCount + " new \xB7 " + conCount + " already exist";
-      importSongList.innerHTML = "";
-      _pendingImport.forEach((song, idx) => {
-        const li = document.createElement("li");
-        li.className = "import-song-item" + (song._exists ? " conflict" : "");
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = !song._exists;
-        cb.id = "isc-" + idx;
-        cb.addEventListener("change", () => {
-          _pendingImport[idx]._selected = cb.checked;
-        });
-        _pendingImport[idx]._selected = !song._exists;
-        const label = document.createElement("label");
-        label.htmlFor = "isc-" + idx;
-        const ts = document.createElement("span");
-        ts.className = "isc-title";
-        ts.textContent = song.title;
-        const ms = document.createElement("span");
-        ms.className = "isc-meta";
-        ms.textContent = song.slides.length + " slides" + (song._exists ? " \xB7 already exists" : "");
-        label.appendChild(ts);
-        label.appendChild(ms);
-        li.appendChild(cb);
-        li.appendChild(label);
-        importSongList.appendChild(li);
-      });
-      importPanel.classList.remove("hidden");
-    }
-    function closeImportPanel() {
-      importPanel.classList.add("hidden");
-      importSongList.innerHTML = "";
-      _pendingImport = [];
-      importFileInput.value = "";
-      importFolderInput.value = "";
-    }
-    function readFileAsText(file) {
-      return new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = (e) => res(e.target.result);
-        r.onerror = () => rej(new Error("Read failed"));
-        r.readAsText(file);
-      });
-    }
-    libSearch.addEventListener("input", () => {
-      libFilter = libSearch.value.trim();
-      renderSongList();
+    $("btn-import-file").addEventListener("click", () => fileInput.click());
+    $("tool-import-folder").addEventListener("click", () => folderInput.click());
+    fileInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length) await processFiles(files, files.length === 1 ? files[0].name : files.length + " files");
     });
-    document.querySelectorAll(".search-toggle .toggle-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".search-toggle .toggle-btn").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        libSearchMode = btn.dataset.mode;
-        renderSongList();
-      });
-    });
-    btnNewSong.addEventListener("click", newSong);
-    btnSaveSong.addEventListener("click", saveSong);
-    btnDeleteSong.addEventListener("click", () => {
-      const s = getActiveSong();
-      if (s && confirm('Delete "' + s.title + '"?')) deleteSongById(s.id);
-    });
-    btnRemoveDuplicates.addEventListener("click", removeDuplicates);
-    btnClearAllSongs.addEventListener("click", clearAllSongs);
-    btnAddSlide.addEventListener("click", addSlide);
-    btnUpdateSlide.addEventListener("click", updateSlide);
-    btnDeleteSlide.addEventListener("click", deleteSlide);
-    slideTextarea.addEventListener("input", refresh);
-    btnExport.addEventListener("click", exportSongs);
-    btnImportFile.addEventListener("click", () => importFileInput.click());
-    importFileInput.addEventListener("change", async (e) => {
-      const f = Array.from(e.target.files);
-      if (f.length) await processFiles(f, f.length === 1 ? f[0].name : f.length + " files");
-    });
-    btnImportFolder.addEventListener("click", () => importFolderInput.click());
-    importFolderInput.addEventListener("change", async (e) => {
-      const files = Array.from(e.target.files).filter((f) => {
-        const n = f.name.toLowerCase();
-        return n.endsWith(".txt") || n.endsWith(".json") || n.endsWith(".csv") || n.endsWith(".tsv");
-      });
-      if (files.length === 0) {
+    folderInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files).filter((f) => SONG_FILE.test(f.name));
+      if (!files.length) {
         setStatus("No compatible files in that folder.", "error");
         return;
       }
       const folderName = files[0].webkitRelativePath.split("/")[0] || "folder";
       await processFiles(files, folderName + " (" + files.length + " files)");
     });
-    btnImportConfirm.addEventListener("click", confirmImport);
-    btnImportCancel.addEventListener("click", closeImportPanel);
-    btnImportClose.addEventListener("click", closeImportPanel);
-    renderSongList();
-    return {
-      currentSlide() {
-        const song = getActiveSong();
-        const lines = activeSlideIdx !== null && song ? song.slides[activeSlideIdx] || "" : slideTextarea.value.trim();
-        return { lines, canNav: !!(song && song.slides.length) };
-      },
-      navigate: navigateSlide,
-      markShown() {
-        currentSlideIdx = activeSlideIdx !== null ? activeSlideIdx : -1;
-      },
-      resetPosition() {
-        currentSlideIdx = -1;
-      },
-      getContent() {
-        const song = getActiveSong();
-        const { lines } = this.currentSlide();
-        return { title: (song ? song.title : songTitleInput.value.trim()) || "", body: lines };
-      },
-      refreshList: renderSongList
-    };
+    $("btn-import-confirm").addEventListener("click", confirmImport);
+    $("btn-import-cancel").addEventListener("click", close);
+    $("btn-import-close").addEventListener("click", close);
+    return { close };
   }
 
   // src/songs/folder.js
@@ -2432,33 +2221,37 @@ ${DELIMITER}
   var saveHandle = (kv, handle) => kv.set(HANDLE_KEY, handle);
   var loadHandle = (kv) => kv.get(HANDLE_KEY);
 
-  // src/dock/library-ui.js
+  // src/dock/library-tools.js
   var PICKER_ID = "obs-songs";
-  function initLibraryUI({ library, kv, setStatus, onChange, report: report2 }) {
-    const banner = $("library-banner"), label = $("output-folder-label"), btnChoose = $("btn-set-folder"), btnReconnect = $("btn-reconnect-folder"), btnRewrite = $("btn-save-all-txt"), btnStop = $("btn-clear-folder");
+  function initLibraryTools({ library, kv, setStatus, report: report2, onChanged }) {
+    const banner = $("library-banner"), btnTools = $("btn-tools"), menu = $("tools-menu"), statusLine = $("library-status"), toolChoose = $("tool-choose-folder"), toolReconnect = $("tool-reconnect"), toolRewrite = $("tool-rewrite-lyrics"), toolStop = $("tool-stop-folder");
     let pendingHandle = null;
+    function setMenu(open) {
+      menu.classList.toggle("hidden", !open);
+      btnTools.setAttribute("aria-expanded", String(open));
+    }
     function render() {
       const mode = library.mode();
       banner.classList.toggle("hidden", mode === "folder");
       banner.classList.toggle("is-lost", mode === "folder-lost");
-      banner.textContent = mode === "folder-lost" ? "Lost access to the song folder \u2014 songs are safe in this browser. Click Reconnect." : "Songs are saved in this browser only. Choose a folder to keep them as files and a lyrics.txt.";
-      label.textContent = mode === "folder" ? "\u{1F4C2} " + (pendingHandle?.name || "Song folder") : mode === "folder-lost" ? "\u26A0 Folder not connected" : "Songs are stored in this browser only";
-      btnReconnect.style.display = mode === "folder-lost" ? "" : "none";
-      btnStop.style.display = mode === "folder" ? "" : "none";
-      btnRewrite.disabled = mode !== "folder";
-      btnChoose.textContent = mode === "folder" ? "Change Folder" : "Choose Folder";
-      onChange();
+      banner.textContent = mode === "folder-lost" ? "Lost access to the song folder. Songs are safe in this browser. Open Library tools and choose Reconnect." : "Songs are saved in this browser only. Open Library tools and choose a library folder to keep them as files and a lyrics.txt.";
+      statusLine.textContent = mode === "folder" ? "Folder: " + (pendingHandle ? pendingHandle.name : "connected") : mode === "folder-lost" ? "Folder not connected" : "Songs stored in this browser only";
+      toolReconnect.classList.toggle("hidden", mode !== "folder-lost");
+      toolStop.classList.toggle("hidden", mode !== "folder");
+      toolRewrite.disabled = mode !== "folder";
+      toolChoose.textContent = mode === "folder" ? "Change library folder" : "Choose library folder";
+      onChanged();
     }
     async function attach(handle, successMessage) {
       const result = await library.attachFolder(createSongFolder(handle));
       pendingHandle = handle;
       await saveHandle(kv, handle);
       result.errors.forEach((e) => report2(new Error(e.file + ": " + e.message)));
-      const skipped = result.errors.length ? ` ${result.errors.length} file(s) were skipped (see Diagnostics).` : "";
-      setStatus(`${successMessage} ${result.loaded} song(s) loaded, ${result.carried} added.${skipped}`, "success");
+      const skipped = result.errors.length ? " " + result.errors.length + " file(s) were skipped (see Diagnostics)." : "";
+      setStatus(successMessage + " " + result.loaded + " song(s) loaded, " + result.carried + " added." + skipped, "success");
       render();
     }
-    btnChoose.addEventListener("click", async () => {
+    async function chooseFolder() {
       if (!window.showDirectoryPicker) {
         setStatus("This browser cannot pick folders.", "error");
         return;
@@ -2472,31 +2265,62 @@ ${DELIMITER}
           setStatus("Could not open that folder.", "error");
         }
       }
-    });
-    btnReconnect.addEventListener("click", async () => {
+    }
+    async function reconnect() {
       try {
-        if (pendingHandle && await ensurePermission(pendingHandle, { request: true })) {
-          await attach(pendingHandle, "Reconnected.");
-        } else {
-          btnChoose.click();
-        }
+        if (pendingHandle && await ensurePermission(pendingHandle, { request: true })) await attach(pendingHandle, "Reconnected.");
+        else await chooseFolder();
       } catch (err) {
         report2(err);
         setStatus("Could not reconnect to the folder.", "error");
       }
-    });
-    btnRewrite.addEventListener("click", async () => {
-      await library.rewriteLyrics();
-      const ok = library.mode() === "folder";
-      setStatus(ok ? "lyrics.txt rewritten." : "Folder not connected.", ok ? "success" : "error");
-      render();
-    });
-    btnStop.addEventListener("click", () => {
-      library.detach();
-      pendingHandle = null;
-      setStatus("No longer using the folder. Songs stay in this browser.", "");
-      render();
-    });
+    }
+    function exportSongs() {
+      const songs = library.list();
+      if (!songs.length) {
+        setStatus("No songs to export.", "error");
+        return;
+      }
+      const blob = new Blob([JSON.stringify({ version: 1, songs }, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "stage-songs-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setStatus("Exported " + songs.length + " songs.", "success");
+    }
+    async function removeDuplicates() {
+      const groups = findDuplicateGroups(library.list());
+      if (!groups.length) {
+        setStatus("No duplicate songs found.", "");
+        return;
+      }
+      const extra = groups.reduce((n, g) => n + (g.length - 1), 0);
+      if (!confirm("Found " + groups.length + " title" + (groups.length !== 1 ? "s" : "") + " with duplicates (" + extra + " extra cop" + (extra !== 1 ? "ies" : "y") + ").\n\nFor each, the version with the most slides will be kept and the rest deleted. This cannot be undone.")) return;
+      const ids = pickRemovals(groups);
+      await library.removeMany([...ids]);
+      onChanged();
+      setStatus("Removed " + ids.size + " duplicate song" + (ids.size !== 1 ? "s" : "") + ".", "success");
+    }
+    async function clearLibrary() {
+      const count = library.list().length;
+      if (!count) {
+        setStatus("Library is already empty.", "");
+        return;
+      }
+      const inFolder = library.mode() === "folder";
+      if (!confirm("Delete ALL " + count + " song" + (count !== 1 ? "s" : "") + " from the library?\n\n" + (inFolder ? "Their files in the library folder will be deleted too. " : "") + "This cannot be undone. If you have not backed up, click Cancel, use Export all as JSON first, then come back.")) return;
+      if (prompt("To confirm, type DELETE below:") !== "DELETE") {
+        setStatus("Clear cancelled. Nothing was deleted.", "");
+        return;
+      }
+      await library.clearAll();
+      onChanged();
+      setStatus("Library cleared. Import your songs again to bring them back.", "success");
+    }
     async function restore() {
       render();
       try {
@@ -2514,86 +2338,196 @@ ${DELIMITER}
         render();
       }
     }
+    btnTools.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenu(menu.classList.contains("hidden"));
+    });
+    menu.addEventListener("click", () => setMenu(false));
+    document.addEventListener("click", (e) => {
+      if (!menu.contains(e.target) && e.target !== btnTools) setMenu(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !menu.classList.contains("hidden")) {
+        setMenu(false);
+        e.stopPropagation();
+      }
+    }, true);
+    toolChoose.addEventListener("click", chooseFolder);
+    toolReconnect.addEventListener("click", reconnect);
+    toolRewrite.addEventListener("click", async () => {
+      await library.rewriteLyrics();
+      const ok = library.mode() === "folder";
+      setStatus(ok ? "lyrics.txt rewritten." : "Folder not connected.", ok ? "success" : "error");
+      render();
+    });
+    toolStop.addEventListener("click", () => {
+      library.detach();
+      pendingHandle = null;
+      setStatus("No longer using the folder. Songs stay in this browser.", "");
+      render();
+    });
+    $("tool-export").addEventListener("click", exportSongs);
+    $("tool-duplicates").addEventListener("click", removeDuplicates);
+    $("tool-clear-all").addEventListener("click", clearLibrary);
     return { restore, render };
   }
 
-  // src/dock/stream-controls.js
-  function initStreamControls({ session, scriptureTab, songsTab, setStatus }) {
-    const previewLines = $("preview-lines"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
-    function refresh() {
-      if (session.activeTab === "scripture") {
-        const has = scriptureTab.hasText();
-        const content = scriptureTab.getContent();
-        btnShow.disabled = !has;
-        btnHide.disabled = !session.isLive;
-        btnPrev.disabled = !scriptureTab.plainRef();
-        btnNext.disabled = !scriptureTab.plainRef();
-        previewLines.textContent = has ? content.body + (content.reference ? "\n\u2014 " + content.reference : "") : "Look up a verse to preview\u2026";
-      } else if (songsTab) {
-        const { lines, canNav } = songsTab.currentSlide();
-        btnShow.disabled = !lines;
-        btnHide.disabled = !session.isLive;
-        btnPrev.disabled = !canNav;
-        btnNext.disabled = !canNav;
-        previewLines.textContent = lines || "Pick a slide to preview\u2026";
-      }
+  // src/core/fonts.js
+  var FONTS = [
+    { label: "Open Sans (Default)", value: "Open Sans" },
+    { label: "Atkinson Hyperlegible", value: "Atkinson Hyperlegible" },
+    { label: "Lato", value: "Lato" },
+    { label: "Montserrat", value: "Montserrat" },
+    { label: "Raleway", value: "Raleway" },
+    { label: "Lora", value: "Lora" },
+    { label: "EB Garamond", value: "EB Garamond" },
+    { label: "Cormorant Garamond", value: "Cormorant Garamond" },
+    { label: "Crimson Text", value: "Crimson Text" },
+    { label: "Playfair Display", value: "Playfair Display" },
+    { label: "Cinzel", value: "Cinzel" },
+    { label: "Georgia", value: "Georgia" }
+  ];
+
+  // src/overlay/style-math.js
+  var CARD_DEFAULT = { frosted: true, "frosted-light": true, pure: false, "sacred-light": true, custom: true };
+  function defaultShowCard(theme) {
+    return CARD_DEFAULT[theme] ?? true;
+  }
+
+  // src/dock/segmented.js
+  function bindSegmented(container, { get, set }) {
+    const buttons = [...container.querySelectorAll("button[data-value]")];
+    function paint() {
+      const current = get();
+      buttons.forEach((button) => {
+        const on = button.dataset.value === current;
+        button.classList.toggle("on", on);
+        button.setAttribute("aria-pressed", String(on));
+      });
     }
-    function navigate(dir) {
-      if (session.activeTab === "scripture") scriptureTab.step(dir);
-      else if (songsTab) songsTab.navigate(dir);
+    buttons.forEach((button) => button.addEventListener("click", () => {
+      set(button.dataset.value);
+      paint();
+    }));
+    paint();
+    return { paint };
+  }
+
+  // src/dock/bg-image.js
+  var MAX_WIDTH = 1920;
+  var JPEG_QUALITY = 0.85;
+  var UNREADABLE = "That image could not be read.";
+  function readBackgroundImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(UNREADABLE));
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onerror = () => reject(new Error(UNREADABLE));
+        img.onload = () => {
+          const ratio = Math.min(1, MAX_WIDTH / img.width);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * ratio);
+          canvas.height = Math.round(img.height * ratio);
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          try {
+            resolve(canvas.toDataURL("image/jpeg", JPEG_QUALITY));
+          } catch {
+            resolve(e.target.result);
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // src/dock/style-tab.js
+  function initStyleTab({ session, store, setStatus, report: report2 }) {
+    const fontSel = $("font-sel"), btnItalic = $("btn-italic"), opacitySlider = $("opacity-slider"), opacityValue = $("opacity-value"), scaleSlider = $("scale-slider"), scaleValue = $("scale-value"), showCardCb = $("show-card-cb"), showTitleCb = $("show-title-cb"), showRefCb = $("show-ref-cb"), customSection = $("custom-colors-section"), colorBg = $("color-bg"), colorText = $("color-text"), colorAccent = $("color-accent"), btnBgImage = $("btn-bg-image"), btnBgClear = $("btn-bg-clear"), bgName = $("bg-image-name"), bgInput = $("bg-image-input");
+    FONTS.forEach((font) => {
+      const option = document.createElement("option");
+      option.value = font.value;
+      option.textContent = font.label;
+      fontSel.appendChild(option);
+    });
+    function sync() {
+      const s = store.get();
+      fontSel.value = s.font;
+      btnItalic.setAttribute("aria-pressed", String(!!s.italic));
+      btnItalic.classList.toggle("on", !!s.italic);
+      opacitySlider.value = String(s.opacity);
+      opacityValue.textContent = s.opacity + "%";
+      scaleSlider.value = String(s.scale);
+      scaleValue.textContent = s.scale + "%";
+      showCardCb.checked = s.showCard !== false;
+      showTitleCb.checked = s.showTitle !== false;
+      showRefCb.checked = s.showReference !== false;
+      customSection.classList.toggle("hidden", s.theme !== "custom");
+      colorBg.value = s.customColors.bg;
+      colorText.value = s.customColors.text;
+      colorAccent.value = s.customColors.accent;
+      btnBgClear.classList.toggle("hidden", !s.bgImage);
+      bgName.textContent = s.bgImage ? "Custom image in use" : "None, using the theme colour";
+      segments.forEach((segment) => segment.paint());
     }
-    btnShow.addEventListener("click", () => {
-      if (session.activeTab === "scripture") {
-        if (!scriptureTab.hasText()) {
-          setStatus("Look up a verse first.", "error");
-          return;
-        }
-      } else {
-        if (!songsTab || !songsTab.currentSlide().lines) {
-          setStatus("No slide text to display.", "error");
-          return;
-        }
-        songsTab.markShown();
-      }
-      session.show();
-      setStatus(session.activeTab === "scripture" ? "Verse is live." : "Slide is live.", "success");
-    });
-    btnHide.addEventListener("click", () => session.hide());
-    btnClear.addEventListener("click", () => {
-      session.clear();
-      if (songsTab) songsTab.resetPosition();
-    });
-    btnPrev.addEventListener("click", () => navigate(-1));
-    btnNext.addEventListener("click", () => navigate(1));
-    document.addEventListener("keydown", (e) => {
-      const inInput = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
-      if (inInput) return;
-      if (e.key === "Escape") btnHide.click();
-      else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-        e.preventDefault();
-        navigate(1);
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        e.preventDefault();
-        navigate(-1);
-      } else if (e.key === " ") {
-        e.preventDefault();
-        if (session.isLive) btnHide.click();
-        else btnShow.click();
+    function change(patch) {
+      store.update(patch);
+      session.resendIfLive();
+      sync();
+    }
+    const segments = [
+      bindSegmented($("theme-swatches"), {
+        get: () => store.get().theme,
+        set: (theme) => change({ theme, showCard: defaultShowCard(theme) })
+      }),
+      bindSegmented($("anim-seg"), { get: () => store.get().animation, set: (animation) => change({ animation }) }),
+      bindSegmented($("position-seg"), { get: () => store.get().position, set: (position) => change({ position }) }),
+      bindSegmented($("size-seg"), { get: () => store.get().fontSize, set: (fontSize) => change({ fontSize }) })
+    ];
+    fontSel.addEventListener("change", () => change({ font: fontSel.value }));
+    btnItalic.addEventListener("click", () => change({ italic: !store.get().italic }));
+    opacitySlider.addEventListener("input", () => change({ opacity: Number(opacitySlider.value) }));
+    scaleSlider.addEventListener("input", () => change({ scale: Number(scaleSlider.value) }));
+    showCardCb.addEventListener("change", () => change({ showCard: showCardCb.checked }));
+    showTitleCb.addEventListener("change", () => change({ showTitle: showTitleCb.checked }));
+    showRefCb.addEventListener("change", () => change({ showReference: showRefCb.checked }));
+    [colorBg, colorText, colorAccent].forEach((input) => input.addEventListener("input", () => {
+      change({ customColors: { bg: colorBg.value, text: colorText.value, accent: colorAccent.value } });
+    }));
+    btnBgImage.addEventListener("click", () => bgInput.click());
+    bgInput.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      bgInput.value = "";
+      if (!file) return;
+      try {
+        change({ bgImage: await readBackgroundImage(file) });
+        setStatus("Background image set.", "success");
+      } catch (err) {
+        report2(err);
+        setStatus(err.message, "error");
       }
     });
-    return { refresh };
+    btnBgClear.addEventListener("click", () => {
+      change({ bgImage: null });
+      setStatus("Background image removed.", "");
+    });
+    sync();
   }
 
   // src/dock/main.js
   var diagnostics = createDiagnostics();
   var report = (context) => (err) => diagnostics.log(context, err);
+  var EMPTY_SCRIPTURE = { body: "", reference: "" };
+  var EMPTY_SONG = { title: "", body: "" };
+  var VIEWS = ["scripture", "songs", "style"];
   function wireDiagnosticsPanel() {
     const list = $("diag-list"), count = $("diag-count");
     diagnostics.subscribe((entries) => {
-      count.textContent = entries.length ? `(${entries.length})` : "";
-      list.replaceChildren(...entries.slice().reverse().map((e) => {
+      count.textContent = entries.length ? "(" + entries.length + ")" : "";
+      list.replaceChildren(...entries.slice().reverse().map((entry) => {
         const li = document.createElement("li");
-        li.textContent = `${e.at.slice(11, 19)}  ${e.context}: ${e.message}`;
+        li.textContent = entry.at.slice(11, 19) + "  " + entry.context + ": " + entry.message;
         return li;
       }));
     });
@@ -2601,78 +2535,78 @@ ${DELIMITER}
   }
   (async () => {
     try {
-      wireDiagnosticsPanel();
-      const status = createStatus({
-        statusBar: $("status-bar"),
-        statusDot: $("status-dot"),
-        statusLabel: $("status-label"),
-        liveKind: $("live-kind")
-      });
+      let showView = function(name) {
+        VIEWS.forEach((view) => {
+          const on = view === name;
+          $("panel-" + view).classList.toggle("hidden", !on);
+          const tab = $("tab-" + view);
+          tab.classList.toggle("on", on);
+          tab.setAttribute("aria-selected", String(on));
+        });
+        if (name !== "style") session.setTab(name);
+        if (liveBar) liveBar.refresh();
+      };
+      const status = createStatus({ statusBar: $("status-bar") });
       const transport = createBrowserTransport("dock", report("transport"));
+      const store = createSettingsStore({ storage: window.localStorage, onError: report("settings") });
+      const tabs = {};
+      let liveBar = null;
+      const session = createSession({
+        transport,
+        readSettings: () => store.styleState(),
+        providers: {
+          scripture: () => tabs.scripture ? tabs.scripture.getContent() : EMPTY_SCRIPTURE,
+          songs: () => tabs.songs ? tabs.songs.getContent() : EMPTY_SONG
+        },
+        onChange: () => {
+          if (liveBar) liveBar.refresh();
+        }
+      });
+      liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
       const scripture = createScriptureApi({
         cache: idbCache(openKv("obs-stage-cache"), report("cache")),
         offline: createOfflineProvider()
       });
-      const library = createLibrary({
-        local: createLocalSongStore(window.localStorage, report("songs")),
-        onError: report("library")
-      });
-      let scriptureTab = null;
-      let songsTab = null;
-      let controls = null;
-      let display = null;
-      const session = createSession({
-        transport,
-        readSettings: () => display.readSettings(),
-        providers: {
-          scripture: () => scriptureTab.getContent(),
-          songs: () => songsTab.getContent()
-        },
-        onChange: (snap) => {
-          status.setDotState(snap.phase, snap.liveTab);
-          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === snap.activeTab));
-          $("panel-scripture").classList.toggle("hidden", snap.activeTab !== "scripture");
-          $("panel-songs").classList.toggle("hidden", snap.activeTab !== "songs");
-          controls?.refresh();
-        }
-      });
-      display = initDisplaySettings({
-        session,
-        setStatus: status.setStatus,
-        onError: report("settings"),
-        applyScriptureSettings: (s) => {
-          scriptureTab.setLanguage(s.language);
-          scriptureTab.buildTranslationSelect(s.translation);
-          scriptureTab.setAutoShow(s.autoShow);
-        }
-      });
-      scriptureTab = initScriptureTab({
+      tabs.scripture = initScriptureTab({
         session,
         scripture,
+        store,
         setStatus: status.setStatus,
-        saveCurrentSettings: () => display.saveCurrentSettings(),
-        refresh: () => controls.refresh()
+        refresh: () => liveBar.refresh()
       });
-      songsTab = initSongsTab({
+      let libraryTools = null;
+      const library = createLibrary({
+        local: createLocalSongStore(window.localStorage, report("songs")),
+        onModeChange: () => {
+          if (libraryTools) libraryTools.render();
+        },
+        onError: report("library")
+      });
+      tabs.songs = initSongsTab({
         session,
         library,
         setStatus: status.setStatus,
-        refresh: () => controls.refresh(),
-        report: report("songs")
+        refresh: () => liveBar.refresh()
       });
-      controls = initStreamControls({ session, scriptureTab, songsTab, setStatus: status.setStatus });
-      display.applySettings(loadSettings({ onError: report("settings") }));
-      document.querySelectorAll(".tab-btn").forEach((b) => b.addEventListener("click", () => session.setTab(b.dataset.tab)));
-      transport.start();
-      session.setTab("scripture");
-      const libraryUi = initLibraryUI({
+      initImportPanel({
+        library,
+        setStatus: status.setStatus,
+        report: report("songs"),
+        onImported: () => tabs.songs.refreshList()
+      });
+      libraryTools = initLibraryTools({
         library,
         kv: openKv("obs-stage-library"),
         setStatus: status.setStatus,
-        onChange: () => songsTab.refreshList(),
-        report: report("library")
+        report: report("library"),
+        onChanged: () => tabs.songs.refreshList()
       });
-      await libraryUi.restore();
+      document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showView(b.dataset.tab)));
+      wireDiagnosticsPanel();
+      initStyleTab({ session, store, setStatus: status.setStatus, report: report("settings") });
+      transport.start();
+      showView("scripture");
+      await libraryTools.restore();
     } catch (err) {
       diagnostics.log("dock init", err);
       console.error("[dock] init failed:", err);

@@ -1,4 +1,4 @@
-import { DEFAULTS } from './state.js';
+import { DEFAULTS, migrateLegacy } from './state.js';
 
 export const SETTINGS_KEY = 'obs-stage-display-settings';
 
@@ -19,11 +19,12 @@ export function loadSettings({ storage = defaultStorage(), onError = () => {} } 
     const raw = storage?.getItem(SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return {
+      const merged = {
         ...DEFAULTS,
         ...parsed,
         customColors: { ...DEFAULTS.customColors, ...(parsed.customColors || {}) },
       };
+      return { ...merged, ...migrateLegacy(merged) };
     }
   } catch (err) {
     onError(err);

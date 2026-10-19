@@ -1,15 +1,26 @@
 import { DEFAULTS, normalizeState } from '../core/state.js';
 import {
   THEME_BG, MIN_HEIGHT_VH, LABEL_REM,
-  hexToRgba, getScale, computeBodyFontSize,
+  hexToRgba, getScale, computeBodyFontSize, cardAlpha,
 } from './style-math.js';
+import { splitLines } from './split-lines.js';
 
 const KIND_CLASSES  = ['kind-verse', 'kind-song'];
-const THEME_CLASSES = ['theme-dark', 'theme-gold', 'theme-white',
-                       'theme-neon', 'theme-sacred-light', 'theme-custom'];
+const THEME_CLASSES = ['theme-frosted', 'theme-frosted-light', 'theme-pure', 'theme-sacred-light', 'theme-custom'];
 const POS_CLASSES   = ['pos-bottom', 'pos-center', 'pos-top'];
 const SIZE_CLASSES  = ['fs-sm', 'fs-md', 'fs-lg', 'fs-xl'];
+const ANIM_CLASSES  = ['anim-rise', 'anim-wipe', 'anim-lines', 'anim-cut'];
+const CARD_STATES   = ['card-in', 'card-out'];
+const TEXT_STATES   = ['text-in', 'text-out'];
 const SACRED_IMAGE  = 'assets/bg1.png';
+
+// Fallback timers a little longer than the CSS durations, in case animationend never fires.
+const ENTER_MS    = { rise: 560, wipe: 700, lines: 400 };
+const LEAVE_MS    = { rise: 400, wipe: 460, lines: 400 };
+const TEXT_OUT_MS = 240;
+const TEXT_IN_MS  = 340;
+const MAX_STAGGER_S  = 0.35;
+const LINES_BUDGET_S = 2.4;
 
 export function createRenderer(doc = document, onError = () => {}) {
   const stage   = doc.getElementById('stage');
@@ -19,27 +30,52 @@ export function createRenderer(doc = document, onError = () => {}) {
   const bodyEl  = doc.getElementById('ov-body');
   const refEl   = doc.getElementById('ov-ref');
 
+  // Bumped by every valid command. Deferred steps compare against it, so the
+  // last command always wins and an interrupted animation cannot leave the
+  // overlay hidden over new text or half faded.
+  let epoch = 0;
+
   function setClass(group, value) {
     group.forEach((c) => stage.classList.remove(c));
     stage.classList.add(value);
   }
 
+  /** Replays a CSS animation class on el. done() runs once, and only if no newer command arrived. */
+  function play(el, add, remove, fallbackMs, token, done) {
+    remove.forEach((c) => el.classList.remove(c));
+    void el.offsetWidth;                         // force reflow so the animation replays
+    el.classList.add(add);
+    let finished = false;
+    let timer = null;
+    const onEnd = (e) => { if (e.target === el) finish(); };
+    function finish() {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      el.removeEventListener('animationend', onEnd);
+      if (token === epoch && done) done();
+    }
+    timer = setTimeout(finish, fallbackMs);
+    el.addEventListener('animationend', onEnd);
+  }
+
   function applyStyles(state) {
-    const kind      = state.kind === 'song' ? 'song' : 'verse';
-    const theme     = state.theme || 'dark';
-    const opacity   = (state.opacity !== undefined ? state.opacity : 88) / 100;
-    const font      = state.font || 'Open Sans';
-    const sizeClass = 'fs-' + (state.fontSize || 'md');
-    const scale     = getScale(state);
-    const colors    = state.customColors || DEFAULTS.customColors;
+    const kind       = state.kind === 'song' ? 'song' : 'verse';
+    const theme      = state.theme;
+    const opacityPct = state.opacity !== undefined ? state.opacity : 88;
+    const font       = state.font || 'Open Sans';
+    const sizeClass  = 'fs-' + (state.fontSize || 'md');
+    const scale      = getScale(state);
+    const colors     = state.customColors || DEFAULTS.customColors;
 
     setClass(KIND_CLASSES,  'kind-' + kind);
     setClass(THEME_CLASSES, 'theme-' + theme);
     setClass(POS_CLASSES,   'pos-' + (state.position || 'bottom'));
     setClass(SIZE_CLASSES,  sizeClass);
+    setClass(ANIM_CLASSES,  'anim-' + state.animation);
+    if (state.animation !== 'lines') stage.classList.remove('lines-go');
 
-    // A background image implies a visible card, since the image is the
-    // card. Otherwise honour the Show Card checkbox.
+    // A background image implies a visible card, since the image is the card.
     let imageUrl = null;
     if (theme === 'sacred-light')                       imageUrl = SACRED_IMAGE;
     else if (state.bgMode === 'image' && state.bgImage) imageUrl = state.bgImage;
@@ -47,7 +83,6 @@ export function createRenderer(doc = document, onError = () => {}) {
     const showCard = imageUrl ? true : (state.showCard !== false);
     stage.classList.toggle('no-card', !showCard);
 
-    // Clear inline backgrounds so nothing stale survives a theme change
     card.style.background         = '';
     card.style.backgroundColor    = '';
     card.style.backgroundImage    = '';
@@ -61,8 +96,8 @@ export function createRenderer(doc = document, onError = () => {}) {
       card.style.backgroundPosition = 'center';
       card.style.backgroundRepeat   = 'no-repeat';
     } else if (showCard) {
-      const hex = theme === 'custom' ? colors.bg : (THEME_BG[theme] || '#0a0a14');
-      card.style.background = hexToRgba(hex, opacity);
+      const hex = theme === 'custom' ? colors.bg : (THEME_BG[theme] || THEME_BG.frosted);
+      card.style.background = hexToRgba(hex, cardAlpha(theme, opacityPct));
     } else {
       card.style.backgroundColor = 'transparent';
     }
@@ -83,7 +118,6 @@ export function createRenderer(doc = document, onError = () => {}) {
     card.style.fontFamily  = "'" + font + "', 'Open Sans', Georgia, serif";
     bodyEl.style.fontStyle = state.italic ? 'italic' : 'normal';
 
-    // Title and reference visibility. Their accent lines follow them.
     const hideTitle = kind !== 'song'  || state.showTitle === false;
     const hideRef   = kind !== 'verse' || state.showReference === false;
     titleEl.style.display = hideTitle ? 'none' : '';
@@ -91,8 +125,7 @@ export function createRenderer(doc = document, onError = () => {}) {
     stage.classList.toggle('no-title', hideTitle);
     stage.classList.toggle('no-ref',   hideRef);
 
-    // Overlay Scale — card height and vertical padding only, so the card
-    // keeps the same width whatever the slider says.
+    // Overlay Scale: card height and vertical padding only, so width never changes.
     card.style.minHeight     = ((MIN_HEIGHT_VH[sizeClass] || 24) * scale) + 'vh';
     card.style.paddingTop    = Math.round(28 * scale) + 'px';
     card.style.paddingBottom = Math.round(24 * scale) + 'px';
@@ -103,76 +136,90 @@ export function createRenderer(doc = document, onError = () => {}) {
     titleEl.style.fontSize = labelRem + 'rem';
     refEl.style.fontSize   = labelRem + 'rem';
   }
-
   function scaleText(text, sizeClass, scale) {
     bodyEl.style.fontSize = computeBodyFontSize(text, sizeClass, scale) + 'px';
   }
 
-  function runAnim(name, seconds, fallbackMs, done) {
-    wrap.style.animation = 'none';
-    void wrap.offsetWidth;                  // force reflow so it replays
-    wrap.style.animation = name + ' ' + seconds + 's ease forwards';
-    if (!done) return;
-    let fired = false;
-    const finish = () => { if (fired) return; fired = true; done(); };
-    const timer = setTimeout(finish, fallbackMs);
-    wrap.addEventListener('animationend', () => {
-      clearTimeout(timer);
-      finish();
-    }, { once: true });
+  function fillContent(state) {
+    const isSong = state.kind === 'song';
+    titleEl.textContent = isSong ? (state.title || '') : '';
+    refEl.textContent   = isSong ? '' : (state.reference || '');
+    const body = state.body || '';
+    bodyEl.setAttribute('aria-label', body);
+
+    if (state.animation === 'lines') {
+      const lines = splitLines(body, state.kind);
+      bodyEl.textContent = '';
+      lines.forEach((text, i) => {
+        const span = doc.createElement('span');
+        span.className = 'ln';
+        span.style.setProperty('--i', String(i));
+        span.textContent = text;
+        bodyEl.appendChild(span);
+      });
+      const stagger = lines.length > 1 ? Math.min(MAX_STAGGER_S, LINES_BUDGET_S / lines.length) : MAX_STAGGER_S;
+      bodyEl.style.setProperty('--stagger', stagger + 's');
+    } else {
+      bodyEl.textContent = body;
+      bodyEl.style.removeProperty('--stagger');
+    }
+    scaleText(body, 'fs-' + (state.fontSize || 'md'), getScale(state));
   }
 
-  // ── Show / hide / clear ───────────────────────────────────────────────
+  function restartLines() {
+    stage.classList.remove('lines-go');
+    void stage.offsetWidth;
+    stage.classList.add('lines-go');
+  }
 
-  function show(state) {
-    const anim       = state.animation || 'fade';
-    const sizeClass  = 'fs-' + (state.fontSize || 'md');
+  function show(state, token) {
+    const anim       = state.animation;
     const wasVisible = !stage.classList.contains('hidden');
-
     const commit = () => {
       applyStyles(state);
-
-      titleEl.textContent = state.kind === 'song' ? (state.title || '') : '';
-      bodyEl.textContent  = state.body || '';
-      refEl.textContent   = state.kind === 'song' ? '' : (state.reference || '');
-      scaleText(state.body || '', sizeClass, getScale(state));
-
+      fillContent(state);
       stage.classList.remove('hidden');
-
-      if (anim === 'none') {
-        wrap.style.animation = '';
-        wrap.style.opacity   = '1';
-        wrap.style.transform = 'none';
-        return;
-      }
-      const name = anim === 'slide'
-        ? (stage.classList.contains('pos-top') ? 'slideDown' : 'slideUp')
-        : 'fadeIn';
-      runAnim(name, 0.55, 620);
     };
 
-    if (wasVisible && anim !== 'none') {
-      // Already on screen — advancing a slide, stepping to the next verse,
-      // or switching between the two. The old text fades out first so the
-      // two never cross-fade on top of each other. The card never animates.
-      runAnim('fadeOut', 0.18, 220, commit);
-    } else {
+    // A hide may have been in flight: put the card back before anything else.
+    CARD_STATES.forEach((c) => card.classList.remove(c));
+    TEXT_STATES.forEach((c) => wrap.classList.remove(c));
+
+    if (!wasVisible) {
       commit();
+      if (anim === 'cut') return;
+      play(card, 'card-in', CARD_STATES, ENTER_MS[anim], token, () => card.classList.remove('card-in'));
+      if (anim === 'lines') restartLines();
+      return;
     }
+
+    // Already on screen: the card stays put and only the text changes.
+    if (anim === 'cut')   { commit(); return; }
+    if (anim === 'lines') { commit(); restartLines(); return; }
+    play(wrap, 'text-out', TEXT_STATES, TEXT_OUT_MS, token, () => {
+      commit();
+      play(wrap, 'text-in', TEXT_STATES, TEXT_IN_MS, token, () => wrap.classList.remove('text-in'));
+    });
   }
 
-  function hide(state) {
-    const anim = state.animation || 'fade';
+  function hide(state, token) {
+    if (stage.classList.contains('hidden')) return;
+    const anim = state.animation;
     const finish = () => {
-      wrap.style.animation = '';
+      CARD_STATES.forEach((c) => card.classList.remove(c));
+      TEXT_STATES.forEach((c) => wrap.classList.remove(c));
       stage.classList.add('hidden');
     };
-    if (anim === 'none') { finish(); return; }
-    runAnim('fadeOut', 0.45, 560, finish);
+    if (anim === 'cut') { finish(); return; }
+    setClass(ANIM_CLASSES, 'anim-' + anim);
+    TEXT_STATES.forEach((c) => wrap.classList.remove(c));
+    play(card, 'card-out', CARD_STATES, LEAVE_MS[anim], token, finish);
   }
 
   function clear() {
-    wrap.style.animation = '';
+    CARD_STATES.forEach((c) => card.classList.remove(c));
+    TEXT_STATES.forEach((c) => wrap.classList.remove(c));
+    stage.classList.remove('lines-go');
     stage.classList.add('hidden');
     titleEl.textContent = '';
     bodyEl.textContent  = '';
@@ -183,10 +230,12 @@ export function createRenderer(doc = document, onError = () => {}) {
     try {
       const state = normalizeState(raw);
       if (!state) return;                       // hostile, newer or unknown kind: render nothing
+      epoch += 1;
+      const token = epoch;
       switch (state.action) {
-        case 'show':  show(state);  break;
-        case 'hide':  hide(state);  break;
-        case 'clear': clear();      break;
+        case 'show':  show(state, token);  break;
+        case 'hide':  hide(state, token);  break;
+        case 'clear': clear();             break;
       }
     } catch (err) {
       onError(err);                             // a blank overlay beats a broken one on a live stream

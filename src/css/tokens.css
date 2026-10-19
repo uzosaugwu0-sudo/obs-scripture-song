@@ -1,0 +1,37 @@
+:root {
+  --bg: #0e1218;
+  --surface: #151b24;
+  --inset: #0a0e13;
+  --border: #232c38;
+  --border-strong: #2a3442;
+  --text: #e6ebf2;
+  --dim: #8793a3;
+  --faint: #6f7c8d;
+  --accent: #6ea8ff;
+  --accent-bg: #243455;
+  --accent-ink: #cfe0ff;
+  --show: #35c46a;
+  --show-ink: #06210f;
+  --hide: #e0a93a;
+  --hide-bg: #2a2415;
+  --live-bg: #101a17;
+  --live-border: #1f5a3b;
+  --live-dot: #35c46a;
+  --warn-bg: #2a2415;
+  --warn-border: #5b4a1f;
+  --warn-ink: #e6c76f;
+  --err-bg: #2a1618;
+  --err-border: #6b2a30;
+  --err-ink: #f0a0a8;
+  --r-control: 7px;
+  --r-field: 9px;
+  --r-card: 10px;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 9px;
+  --space-4: 12px;
+  --font: "Segoe UI", Helvetica, Arial, sans-serif;
+  --fs-body: 12px;
+  --fs-emph: 13px;
+  --fs-label: 10px;
+}

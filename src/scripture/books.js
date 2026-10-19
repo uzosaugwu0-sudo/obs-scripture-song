@@ -51,15 +51,8 @@ export const BOOK_ALIASES = {
  * "Psalm", "Ps", "1st John", "II Cor" and "Philipp" all land correctly.
  */
 export function bookIndexOf(name) {
-  let n = (name || '').toLowerCase().trim().replace(/\.$/, '');
+  const n = normalizeBookName(name);
   if (!n) return -1;
-
-  // Normalise leading ordinals: "1st John" / "I John" / "First John" → "1 john"
-  n = n
-    .replace(/^(1st|first|i)\s+/,   '1 ')
-    .replace(/^(2nd|second|ii)\s+/, '2 ')
-    .replace(/^(3rd|third|iii)\s+/, '3 ')
-    .replace(/\s+/g, ' ');
 
   let i = BIBLE_BOOKS.findIndex(b =>
     b[0].toLowerCase() === n || (b[1] && b[1].toLowerCase() === n));
@@ -92,4 +85,14 @@ export function searchBooks(query) {
       name.toLowerCase().includes(q))
     .map(([name]) => name)
     .slice(0, 8);
+}
+
+/** Lower-case a typed book name and normalise ordinals: "II Cor." becomes "2 cor". */
+export function normalizeBookName(name) {
+  const n = (name || '').toLowerCase().trim().replace(/\.$/, '');
+  return n
+    .replace(/^(1st|first|i)\s+/,   '1 ')
+    .replace(/^(2nd|second|ii)\s+/, '2 ')
+    .replace(/^(3rd|third|iii)\s+/, '3 ')
+    .replace(/\s+/g, ' ');
 }

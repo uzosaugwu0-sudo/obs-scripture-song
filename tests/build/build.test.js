@@ -34,3 +34,12 @@ describe('build', () => {
     for (const u of urls) expect(existsSync(`dist/css/${u}`), u).toBe(true);
   });
 });
+describe('dock stylesheet', () => {
+  it('concatenates the dock sheets with the design tokens first', () => {
+    const css = readFileSync('dist/css/dock.css', 'utf8');
+    expect(css.indexOf('--bg:')).toBeGreaterThanOrEqual(0);
+    expect(css.indexOf('--bg:')).toBeLessThan(css.indexOf('.live-bar'));
+    expect(css).toContain('.swatch');
+    expect(css).toContain('.banner');
+  });
+});

@@ -3,28 +3,33 @@ import { createStatus } from './status.js';
 import { createSession } from './session.js';
 import { createDiagnostics } from './diagnostics.js';
 import { createBrowserTransport } from '../transport/index.js';
+import { createSettingsStore } from './settings-store.js';
+import { initLiveBar } from './live-bar.js';
 import { createScriptureApi } from '../scripture/api.js';
 import { createOfflineProvider } from '../scripture/offline.js';
+import { openKv, idbCache } from '../core/idb.js';
+import { initScriptureTab } from './scripture-tab.js';
 import { createLibrary } from '../songs/library.js';
 import { createLocalSongStore } from '../songs/local-store.js';
-import { openKv, idbCache } from '../core/idb.js';
-import { loadSettings } from '../core/settings.js';
-import { initDisplaySettings } from './display-settings.js';
-import { initScriptureTab } from './scripture-tab.js';
 import { initSongsTab } from './songs-tab.js';
-import { initLibraryUI } from './library-ui.js';
-import { initStreamControls } from './stream-controls.js';
+import { initImportPanel } from './import-panel.js';
+import { initLibraryTools } from './library-tools.js';
+import { initStyleTab } from './style-tab.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
 
+const EMPTY_SCRIPTURE = { body: '', reference: '' };
+const EMPTY_SONG = { title: '', body: '' };
+const VIEWS = ['scripture', 'songs', 'style'];
+
 function wireDiagnosticsPanel() {
   const list = $('diag-list'), count = $('diag-count');
   diagnostics.subscribe((entries) => {
-    count.textContent = entries.length ? `(${entries.length})` : '';
-    list.replaceChildren(...entries.slice().reverse().map((e) => {
+    count.textContent = entries.length ? '(' + entries.length + ')' : '';
+    list.replaceChildren(...entries.slice().reverse().map((entry) => {
       const li = document.createElement('li');
-      li.textContent = `${e.at.slice(11, 19)}  ${e.context}: ${e.message}`;
+      li.textContent = entry.at.slice(11, 19) + '  ' + entry.context + ': ' + entry.message;
       return li;
     }));
   });
@@ -33,74 +38,68 @@ function wireDiagnosticsPanel() {
 
 (async () => {
   try {
-    wireDiagnosticsPanel();
+    const status = createStatus({ statusBar: $('status-bar') });
+    const transport = createBrowserTransport('dock', report('transport'));
+    const store = createSettingsStore({ storage: window.localStorage, onError: report('settings') });
 
-    const status = createStatus({
-      statusBar: $('status-bar'), statusDot: $('status-dot'),
-      statusLabel: $('status-label'), liveKind: $('live-kind'),
+    // Each tab registers itself here when it is initialised (later tasks).
+    const tabs = {};
+    let liveBar = null;
+
+    const session = createSession({
+      transport,
+      readSettings: () => store.styleState(),
+      providers: {
+        scripture: () => (tabs.scripture ? tabs.scripture.getContent() : EMPTY_SCRIPTURE),
+        songs: () => (tabs.songs ? tabs.songs.getContent() : EMPTY_SONG),
+      },
+      onChange: () => { if (liveBar) liveBar.refresh(); },
     });
 
-    const transport = createBrowserTransport('dock', report('transport'));
+    /** Which panel is showing. The Style view leaves session.activeTab alone. */
+    function showView(name) {
+      VIEWS.forEach((view) => {
+        const on = view === name;
+        $('panel-' + view).classList.toggle('hidden', !on);
+        const tab = $('tab-' + view);
+        tab.classList.toggle('on', on);
+        tab.setAttribute('aria-selected', String(on));
+      });
+      if (name !== 'style') session.setTab(name);
+      if (liveBar) liveBar.refresh();
+    }
+
+    liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
     const scripture = createScriptureApi({
       cache: idbCache(openKv('obs-stage-cache'), report('cache')),
       offline: createOfflineProvider(),
     });
+    tabs.scripture = initScriptureTab({
+      session, scripture, store, setStatus: status.setStatus, refresh: () => liveBar.refresh(),
+    });
+    let libraryTools = null;
     const library = createLibrary({
       local: createLocalSongStore(window.localStorage, report('songs')),
+      onModeChange: () => { if (libraryTools) libraryTools.render(); },
       onError: report('library'),
     });
-
-    let scriptureTab = null;
-    let songsTab = null;
-    let controls = null;
-    let display = null;
-
-    const session = createSession({
-      transport,
-      readSettings: () => display.readSettings(),
-      providers: {
-        scripture: () => scriptureTab.getContent(),
-        songs: () => songsTab.getContent(),
-      },
-      onChange: (snap) => {
-        status.setDotState(snap.phase, snap.liveTab);
-        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === snap.activeTab));
-        $('panel-scripture').classList.toggle('hidden', snap.activeTab !== 'scripture');
-        $('panel-songs').classList.toggle('hidden', snap.activeTab !== 'songs');
-        controls?.refresh();
-      },
+    tabs.songs = initSongsTab({
+      session, library, setStatus: status.setStatus, refresh: () => liveBar.refresh(),
     });
-
-    display = initDisplaySettings({
-      session, setStatus: status.setStatus, onError: report('settings'),
-      applyScriptureSettings: (s) => {
-        scriptureTab.setLanguage(s.language);
-        scriptureTab.buildTranslationSelect(s.translation);
-        scriptureTab.setAutoShow(s.autoShow);
-      },
+    initImportPanel({
+      library, setStatus: status.setStatus, report: report('songs'), onImported: () => tabs.songs.refreshList(),
     });
-    scriptureTab = initScriptureTab({
-      session, scripture, setStatus: status.setStatus,
-      saveCurrentSettings: () => display.saveCurrentSettings(),
-      refresh: () => controls.refresh(),
-    });
-    songsTab = initSongsTab({
-      session, library, setStatus: status.setStatus,
-      refresh: () => controls.refresh(), report: report('songs'),
-    });
-    controls = initStreamControls({ session, scriptureTab, songsTab, setStatus: status.setStatus });
-
-    display.applySettings(loadSettings({ onError: report('settings') }));
-
-    document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => session.setTab(b.dataset.tab)));
-    transport.start();
-    session.setTab('scripture');
-
-    const libraryUi = initLibraryUI({
+    libraryTools = initLibraryTools({
       library, kv: openKv('obs-stage-library'), setStatus: status.setStatus,
-      onChange: () => songsTab.refreshList(), report: report('library'),
+      report: report('library'), onChanged: () => tabs.songs.refreshList(),
     });
-    await libraryUi.restore();
+    document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.tab)));
+
+    wireDiagnosticsPanel();
+    initStyleTab({ session, store, setStatus: status.setStatus, report: report('settings') });
+    transport.start();
+    showView('scripture');
+    await libraryTools.restore();
   } catch (err) {
     diagnostics.log('dock init', err);
     console.error('[dock] init failed:', err);

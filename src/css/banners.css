@@ -1,0 +1,16 @@
+.banner { padding: 8px 10px; border-radius: var(--r-field); font-size: 11px; background: var(--warn-bg);
+  border: 1px solid var(--warn-border); color: var(--warn-ink); }
+.banner.is-lost { background: var(--err-bg); border-color: var(--err-border); color: var(--err-ink); }
+
+.import-panel { border: 1px solid var(--border-strong); border-radius: var(--r-card); padding: 10px; display: flex;
+  flex-direction: column; gap: 8px; background: var(--surface); }
+.import-list { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow: auto; }
+.import-list li { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.import-list li.conflict .isc-title { color: var(--hide); }
+.import-list label { display: flex; flex-direction: column; min-width: 0; }
+.isc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.isc-meta { color: var(--dim); font-size: 11px; }
+
+.diag { margin-top: 6px; font-size: 11px; color: var(--dim); }
+.diag ul { list-style: none; margin: 4px 0; padding: 0; max-height: 120px; overflow: auto; }
+.diag li { padding: 2px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }

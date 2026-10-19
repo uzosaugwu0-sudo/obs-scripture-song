@@ -34,3 +34,31 @@ describe('computeBodyFontSize', () => {
     expect(computeBodyFontSize(undefined, 'fs-md', 1)).toBe(46);
   });
 });
+
+import { cardAlpha, defaultShowCard, THEME_BG } from '../../src/overlay/style-math.js';
+
+describe('cardAlpha', () => {
+  it('scales the slider by the theme base alpha', () => {
+    expect(cardAlpha('frosted', 88)).toBeCloseTo(0.55, 5);
+    expect(cardAlpha('frosted-light', 88)).toBeCloseTo(0.704, 5);
+    expect(cardAlpha('custom', 88)).toBeCloseTo(0.88, 5);
+  });
+  it('clamps to 0..1', () => {
+    expect(cardAlpha('custom', 250)).toBe(1);
+    expect(cardAlpha('custom', -5)).toBe(0);
+  });
+});
+
+describe('defaultShowCard', () => {
+  it('is off only for Pure Type', () => {
+    expect(defaultShowCard('pure')).toBe(false);
+    for (const t of ['frosted', 'frosted-light', 'sacred-light', 'custom']) expect(defaultShowCard(t)).toBe(true);
+    expect(defaultShowCard('unknown')).toBe(true);
+  });
+});
+
+describe('THEME_BG', () => {
+  it('has a card colour for every built-in theme that uses one', () => {
+    for (const t of ['frosted', 'frosted-light', 'pure', 'sacred-light']) expect(THEME_BG[t]).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
