@@ -29,12 +29,40 @@
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Sections">
-    <button id="tab-scripture" class="tab on" data-tab="scripture" role="tab" aria-selected="true" type="button">Scripture</button>
+    <button id="tab-plan" class="tab on" data-tab="plan" role="tab" aria-selected="true" type="button">Plan</button>
+    <button id="tab-scripture" class="tab" data-tab="scripture" role="tab" aria-selected="false" type="button">Scripture</button>
     <button id="tab-songs" class="tab" data-tab="songs" role="tab" aria-selected="false" type="button">Songs</button>
     <button id="tab-style" class="tab" data-tab="style" role="tab" aria-selected="false" type="button">Style</button>
   </nav>
 
-  <section id="panel-scripture" class="panel" role="tabpanel" aria-labelledby="tab-scripture">
+  <div id="picker-banner" class="picker-banner hidden" role="status">
+    <span id="picker-text"></span>
+    <button id="picker-back" class="link-btn" type="button">Back to plan</button>
+  </div>
+
+  <section id="panel-plan" class="panel" role="tabpanel" aria-labelledby="tab-plan">
+    <div id="plan-banner" class="banner hidden" role="status"></div>
+    <div class="row">
+      <select id="plan-select" class="sel" aria-label="Service plan"></select>
+      <div class="menu">
+        <button id="btn-plan-menu" class="btn btn-ghost" type="button" aria-haspopup="menu" aria-expanded="false">Plan &#9662;</button>
+        <div id="plan-menu" class="menu-list down hidden" role="menu">
+          <button id="plan-new" role="menuitem" type="button">New plan</button>
+          <button id="plan-rename" role="menuitem" type="button">Rename</button>
+          <button id="plan-duplicate" role="menuitem" type="button">Duplicate</button>
+          <button id="plan-delete" class="danger" role="menuitem" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
+    <p id="plan-unreadable" class="faint hidden"></p>
+    <ol id="plan-list" class="plan-list"></ol>
+    <div class="row">
+      <button id="btn-plan-add-song" class="btn btn-ghost grow" type="button">+ Song</button>
+      <button id="btn-plan-add-verse" class="btn btn-ghost grow" type="button">+ Verse</button>
+    </div>
+  </section>
+
+  <section id="panel-scripture" class="panel hidden" role="tabpanel" aria-labelledby="tab-scripture">
     <div class="smart">
       <input id="smart-input" class="field" type="text" placeholder="John 3:16, a book, or words" autocomplete="off" spellcheck="false" aria-label="Verse reference or word search">
       <ul id="smart-list" class="sugg hidden" role="listbox"></ul>
@@ -44,6 +72,9 @@
     <div class="block">
       <label class="lbl" for="verse-text">Verse text <span class="faint">(edit before it goes live)</span></label>
       <textarea id="verse-text" class="area" placeholder="Look up a reference and the text appears here"></textarea>
+    </div>
+    <div class="row">
+      <button id="btn-verse-to-plan" class="btn btn-ghost grow" type="button" disabled>+ Plan</button>
     </div>
     <div class="row">
       <select id="language-sel" class="sel" aria-label="Language"></select>
@@ -74,6 +105,7 @@
         <strong id="song-name" class="song-name"></strong>
         <div class="row">
           <button id="btn-all-songs" class="btn btn-ghost" type="button">All songs</button>
+          <button id="btn-song-to-plan" class="btn btn-ghost" type="button">+ Plan</button>
           <button id="btn-edit-song" class="btn btn-ghost" type="button">Edit</button>
         </div>
       </div>

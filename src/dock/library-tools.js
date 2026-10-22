@@ -4,7 +4,7 @@ import { findDuplicateGroups, pickRemovals } from '../songs/duplicates.js';
 
 const PICKER_ID = 'obs-songs';
 
-export function initLibraryTools({ library, kv, setStatus, report, onChanged }) {
+export function initLibraryTools({ library, kv, setStatus, report, onChanged, onFolderChange = async () => {} }) {
   const banner = $('library-banner'), btnTools = $('btn-tools'), menu = $('tools-menu'),
         statusLine = $('library-status'), toolChoose = $('tool-choose-folder'),
         toolReconnect = $('tool-reconnect'), toolRewrite = $('tool-rewrite-lyrics'), toolStop = $('tool-stop-folder');
@@ -39,6 +39,7 @@ export function initLibraryTools({ library, kv, setStatus, report, onChanged }) 
     result.errors.forEach((e) => report(new Error(e.file + ': ' + e.message)));
     const skipped = result.errors.length ? ' ' + result.errors.length + ' file(s) were skipped (see Diagnostics).' : '';
     setStatus(successMessage + ' ' + result.loaded + ' song(s) loaded, ' + result.carried + ' added.' + skipped, 'success');
+    try { await onFolderChange(handle); } catch (err) { report(err); setStatus('Songs are ready, but plans could not use the folder.', 'error'); }
     render();
   }
 
@@ -137,6 +138,7 @@ export function initLibraryTools({ library, kv, setStatus, report, onChanged }) 
   toolStop.addEventListener('click', () => {
     library.detach();
     pendingHandle = null;
+    Promise.resolve(onFolderChange(null)).catch(report);
     setStatus('No longer using the folder. Songs stay in this browser.', '');
     render();
   });

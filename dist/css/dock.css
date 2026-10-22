@@ -142,12 +142,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 input[type="color"] { width: 44px; height: 28px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: none; }
 
 .song-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow: auto; }
-.song-item { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 9px 10px;
+.song-item { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 9px 10px;
   border-radius: 8px; background: var(--surface); border: 1px solid var(--border); cursor: pointer; min-width: 0; }
 .song-item:hover { border-color: var(--border-strong); }
 .song-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; min-width: 0; }
 .song-item .count { color: var(--dim); font-size: 11px; }
 .song-item .del { background: none; border: none; color: var(--faint); }
+.song-item .add { background: none; border: 1px solid var(--border-strong); border-radius: 99px; color: var(--accent-ink); padding: 2px 8px; font-size: 11px; }
 .song-item .excerpt { grid-column: 1 / -1; color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge { margin-left: 6px; background: var(--hide-bg); color: var(--hide); border-radius: 4px; padding: 0 5px; font-size: 9px; letter-spacing: 0.06em; }
 .song-name { flex: 1 1 0; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -200,3 +201,27 @@ input[type="color"] { width: 44px; height: 28px; padding: 0; border: 1px solid v
 .diag { margin-top: 6px; font-size: 11px; color: var(--dim); }
 .diag ul { list-style: none; margin: 4px 0; padding: 0; max-height: 120px; overflow: auto; }
 .diag li { padding: 2px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+
+.plan-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow: auto; }
+.plan-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; gap: 7px; align-items: center;
+  padding: 4px 8px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); min-width: 0; }
+.plan-item.cur { border-color: var(--show); background: var(--live-bg); }
+.plan-item.done { opacity: 0.5; }
+.plan-item.missing .plan-title { color: var(--faint); font-style: italic; }
+.plan-empty { padding: 10px; list-style: none; }
+.plan-grip { color: var(--faint); cursor: grab; user-select: none; }
+.plan-icon { color: var(--dim); width: 1.2em; text-align: center; }
+.plan-title { background: none; border: none; padding: 8px 0; text-align: left; color: var(--text); font-weight: 600;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-status { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.plan-more { background: none; border: none; color: var(--dim); padding: 6px 8px; min-height: 32px; }
+.row-actions { grid-column: 1 / -1; display: flex; gap: 6px; padding-bottom: 4px; }
+.row-actions .btn { flex: 1; }
+.next-item { min-height: 44px; font-weight: 700; }
+
+.plan-line { color: var(--accent-ink); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.picker-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--space-3);
+  padding: 8px 10px; border-radius: var(--r-field); background: var(--accent-bg); color: var(--accent-ink); font-size: 11px; }
+
+.menu-list.down { top: calc(100% + 4px); bottom: auto; }

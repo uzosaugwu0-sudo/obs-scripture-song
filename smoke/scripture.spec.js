@@ -5,6 +5,7 @@ test.beforeEach(async ({ context }) => { await blockBibleApi(context); });
 
 test('an offline verse from the smart box reaches the overlay, then hides', async ({ context }) => {
   const { dock, overlay } = await openPair(context);
+  await dock.click('#tab-scripture');
   await lookup(dock, 'John 3:16');
   await expect(dock.locator('#verse-text')).toHaveValue(/For God so loved the world/);
   await expect(dock.locator('#smart-input')).toHaveValue('John 3:16');
@@ -20,6 +21,7 @@ test('an offline verse from the smart box reaches the overlay, then hides', asyn
 
 test('the live bar previews the loaded verse and enables Show', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await expect(dock.locator('#btn-show')).toBeDisabled();
   await lookup(dock, 'John 3:16');
   await expect(dock.locator('#preview-text')).toContainText('For God so loved');
@@ -29,6 +31,7 @@ test('the live bar previews the loaded verse and enables Show', async ({ context
 
 test('stepping to the next verse while live updates the overlay', async ({ context }) => {
   const { dock, overlay } = await openPair(context);
+  await dock.click('#tab-scripture');
   await lookup(dock, 'John 3:16');
   await expect(dock.locator('#verse-text')).toHaveValue(/God so loved/);
   await dock.click('#btn-show');
@@ -51,6 +54,7 @@ test('a late-opened overlay restores the live verse', async ({ context }) => {
 
 test('Space shows and hides when focus is not in a field', async ({ context }) => {
   const { dock, overlay } = await openPair(context);
+  await dock.click('#tab-scripture');
   await lookup(dock, 'John 3:16');
   await expect(dock.locator('#verse-text')).toHaveValue(/God so loved/);
   await dock.locator('#preview-text').click();
@@ -62,6 +66,7 @@ test('Space shows and hides when focus is not in a field', async ({ context }) =
 
 test('editing the verse text changes what goes live', async ({ context }) => {
   const { dock, overlay } = await openPair(context);
+  await dock.click('#tab-scripture');
   await lookup(dock, 'John 3:16');
   await expect(dock.locator('#verse-text')).toHaveValue(/God so loved/);
   await dock.fill('#verse-text', 'My edited words');
@@ -71,6 +76,7 @@ test('editing the verse text changes what goes live', async ({ context }) => {
 
 test('Auto Show sends the verse as soon as it is looked up', async ({ context }) => {
   const { dock, overlay } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.check('#auto-show-cb');
   await lookup(dock, 'John 3:16');
   await expect(overlay.locator('#ov-body')).toContainText('For God so loved the world');
@@ -78,6 +84,7 @@ test('Auto Show sends the verse as soon as it is looked up', async ({ context })
 
 test('Random fills the verse text from the bundled Bible', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.click('#btn-random');
   await expect(dock.locator('#verse-text')).toHaveValue(/.+/);
   await expect(dock.locator('#preview-sub')).toContainText('KJV');
@@ -85,6 +92,7 @@ test('Random fills the verse text from the bundled Bible', async ({ context }) =
 
 test('translation and Auto Show survive a reload', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.selectOption('#translation-sel', 'WEB');
   await dock.check('#auto-show-cb');
   await dock.reload();
@@ -93,6 +101,7 @@ test('translation and Auto Show survive a reload', async ({ context }) => {
 });
 test('typing a book shows suggestions and picking one asks for a chapter', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.fill('#smart-input', 'joh');
   await expect(dock.locator('#smart-list li')).toHaveCount(1);
   await expect(dock.locator('#smart-list li').first()).toContainText('John');
@@ -103,6 +112,7 @@ test('typing a book shows suggestions and picking one asks for a chapter', async
 
 test('Enter on a bare book name selects the book', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.fill('#smart-input', 'john');
   await dock.press('#smart-input', 'Enter');
   await expect(dock.locator('#smart-input')).toHaveValue('John ');
@@ -110,6 +120,7 @@ test('Enter on a bare book name selects the book', async ({ context }) => {
 
 test('arrow keys and Enter pick a suggestion', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.fill('#smart-input', 'jo');
   await expect(dock.locator('#smart-list')).toBeVisible();
   await dock.press('#smart-input', 'ArrowDown');
@@ -119,6 +130,7 @@ test('arrow keys and Enter pick a suggestion', async ({ context }) => {
 
 test('Escape closes the dropdown without clearing the box', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.fill('#smart-input', 'joh');
   await expect(dock.locator('#smart-list')).toBeVisible();
   await dock.press('#smart-input', 'Escape');
@@ -128,12 +140,14 @@ test('Escape closes the dropdown without clearing the box', async ({ context }) 
 
 test('quick-book chips fill the box', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.locator('#quick-books button', { hasText: 'Romans' }).click();
   await expect(dock.locator('#smart-input')).toHaveValue('Romans ');
 });
 
 test('a blank Enter says what to type', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.press('#smart-input', 'Enter');
   await expect(dock.locator('#status-bar')).toContainText('Enter a reference or some words first.');
 });
@@ -147,6 +161,7 @@ test('a word search lists matches and clicking one looks the verse up', async ({
     contentType: 'application/json', body: JSON.stringify({ text: 'Mocked verse text' }),
   }));
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   await dock.selectOption('#translation-sel', 'NIV');
   await lookup(dock, 'loved the world');
   await expect(dock.locator('#search-results li')).toHaveCount(1);
@@ -159,6 +174,7 @@ test('a word search lists matches and clicking one looks the verse up', async ({
 
 test('odd input never breaks the box', async ({ context }) => {
   const { dock } = await openPair(context);
+  await dock.click('#tab-scripture');
   const errors = [];
   dock.on('pageerror', (e) => errors.push(e.message));
   for (const text of ['316', 'john  3 :16', '1 John', 'x'.repeat(2000), 'Hezekiah 1:1', '   ', 'John 3:99']) {

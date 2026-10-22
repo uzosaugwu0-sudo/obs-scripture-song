@@ -2,9 +2,9 @@ import { $ } from './util.js';
 import { searchSongs, tokenize, markTokens } from '../songs/search.js';
 import { findDuplicateGroups } from '../songs/duplicates.js';
 
-export function initSongsTab({ session, library, setStatus, refresh }) {
+export function initSongsTab({ session, library, setStatus, refresh, addToPlan }) {
   const search = $('song-search'), listEl = $('song-list'), view = $('song-view'), nameEl = $('song-name'),
-        btnAll = $('btn-all-songs'), btnEdit = $('btn-edit-song'), cardsEl = $('slide-cards'),
+        btnAll = $('btn-all-songs'), btnToPlan = $('btn-song-to-plan'), btnEdit = $('btn-edit-song'), cardsEl = $('slide-cards'),
         editor = $('song-editor'), titleInput = $('song-title-input'), slideList = $('slide-list'),
         slideText = $('slide-textarea'), btnAdd = $('btn-add-slide'), btnUpdate = $('btn-update-slide'),
         btnDelSlide = $('btn-delete-slide'), btnSave = $('btn-save-song'), btnDelete = $('btn-delete-song'),
@@ -75,6 +75,13 @@ export function initSongsTab({ session, library, setStatus, refresh }) {
       const count = document.createElement('span');
       count.className = 'count';
       count.textContent = song.slides.length + (song.slides.length === 1 ? ' slide' : ' slides');
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'add';
+      add.textContent = '+ Plan';
+      add.title = 'Add this song to the open plan (hold Shift to keep choosing)';
+      add.setAttribute('aria-label', 'Add ' + (song.title || 'Untitled') + ' to the plan');
+      add.addEventListener('click', (e) => { e.stopPropagation(); addToPlan(song.id, e.shiftKey); });
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'del';
@@ -82,7 +89,7 @@ export function initSongsTab({ session, library, setStatus, refresh }) {
       del.title = 'Delete this song';
       del.setAttribute('aria-label', 'Delete ' + song.title);
       del.addEventListener('click', (e) => { e.stopPropagation(); removeSong(song); });
-      li.append(title, count, del);
+      li.append(title, count, add, del);
       if (excerpt) {
         const note = document.createElement('span');
         note.className = 'excerpt';
@@ -266,6 +273,7 @@ export function initSongsTab({ session, library, setStatus, refresh }) {
   search.addEventListener('input', () => { listOpen = true; render(); });
   btnAll.addEventListener('click', () => { listOpen = true; render(); });
   btnEdit.addEventListener('click', startEditing);
+  btnToPlan.addEventListener('click', (e) => { const song = getSong(); if (song) addToPlan(song.id, e.shiftKey); });
   btnNew.addEventListener('click', startNew);
   btnDone.addEventListener('click', () => {
     if (hasUnsavedEdits() && !discardArmed) {

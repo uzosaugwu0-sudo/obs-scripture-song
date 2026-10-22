@@ -3,9 +3,9 @@ import { LANGUAGES, TRANSLATIONS } from '../scripture/translations.js';
 import { buildReference, stepReference } from '../scripture/reference.js';
 import { initSmartBox } from './smart-box.js';
 
-export function initScriptureTab({ session, scripture, store, setStatus, refresh }) {
+export function initScriptureTab({ session, scripture, store, setStatus, refresh, addToPlan }) {
   const verseText = $('verse-text'), languageSel = $('language-sel'), translationSel = $('translation-sel'),
-        autoShowCb = $('auto-show-cb'), randomScope = $('random-scope'), btnRandom = $('btn-random'),
+        autoShowCb = $('auto-show-cb'), randomScope = $('random-scope'), btnRandom = $('btn-random'), btnToPlan = $('btn-verse-to-plan'),
         results = $('search-results');
 
   let plainRef = '';   // "John 3:16", used for stepping
@@ -42,6 +42,7 @@ export function initScriptureTab({ session, scripture, store, setStatus, refresh
     verseText.value = result.text;
     plainRef = result.rawRef;
     refLabel = result.reference;
+    btnToPlan.disabled = false;
     smart.setValue(result.rawRef);
     hideResults();
     refresh();
@@ -112,6 +113,7 @@ export function initScriptureTab({ session, scripture, store, setStatus, refresh
   });
   autoShowCb.addEventListener('change', () => store.update({ autoShow: autoShowCb.checked }));
   verseText.addEventListener('input', refresh);
+  btnToPlan.addEventListener('click', (e) => { if (plainRef) addToPlan(plainRef, translation(), e.shiftKey); });
   btnRandom.addEventListener('click', async () => {
     setStatus('Picking a verse...', 'loading');
     const picked = await scripture.randomReference(translation(), randomScope.value);

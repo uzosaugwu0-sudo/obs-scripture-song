@@ -59,7 +59,7 @@ async function buildBibles() {
   }
 }
 
-const DOCK_SHEETS = ['tokens', 'base', 'live-bar', 'tabs', 'fields', 'cards', 'banners'];
+const DOCK_SHEETS = ['tokens', 'base', 'live-bar', 'tabs', 'fields', 'cards', 'banners', 'plan'];
 
 /** The dock sheets are small and ordered; the browser gets them as one file. */
 async function buildDockCss() {
