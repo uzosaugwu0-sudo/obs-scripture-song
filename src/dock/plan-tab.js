@@ -1,6 +1,6 @@
 import { $ } from './util.js';
-import { createPlan, addItem, songItem, readingItem, renamePlan, DEFAULT_PLAN_NAME } from '../plan/model.js';
-import { itemStatus, itemTitle, indexOfItem, nextLoadable, prevLoadable, planSummary } from '../plan/cursor.js';
+import { createPlan, addItem, songItem, readingItem, renamePlan, moveItem, moveItemTo, removeItem, DEFAULT_PLAN_NAME } from '../plan/model.js';
+import { itemStatus, itemTitle, indexOfItem, nextLoadable, prevLoadable, currentAfterRemove, planSummary } from '../plan/cursor.js';
 
 const TYPE_ICON = { song: '♫', reading: '✝' };
 const BANNER_TEXT = {
@@ -29,6 +29,8 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
   let picking = null;       // 'songs' | 'scripture' while the operator chooses something to add
   let queue = Promise.resolve();
   let loading = false;      // true while an item loads, so a second Next item cannot skip one
+  let openRowId = null;     // the row whose actions (Move up, Move down, Remove) are showing
+  let dragId = null;        // the row being dragged
 
   /** Plan changes run one after another, so two quick edits never overwrite each other. */
   const enqueue = (job) => { queue = queue.then(job).catch(report); return queue; };
@@ -101,7 +103,14 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
     title.type = 'button';
     title.addEventListener('click', () => loadItem(item));
     const state = make('span', 'plan-status', statusText(item, index, currentIndex));
-    li.append(grip, icon, title, state);
+    const more = make('button', 'plan-more', '⋯');
+    more.type = 'button';
+    more.setAttribute('aria-label', 'Actions for ' + itemTitle(item, library));
+    more.setAttribute('aria-expanded', String(openRowId === item.id));
+    more.addEventListener('click', () => { openRowId = openRowId === item.id ? null : item.id; render(); });
+    li.append(grip, icon, title, state, more);
+    if (openRowId === item.id) li.appendChild(renderActions(item, index));
+    wireDrag(li, item);
     return li;
   }
 
@@ -110,6 +119,50 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
     btnNext.disabled = !next;
     btnNext.textContent = !plan.items.length || next ? 'Next item \u00bb' : 'End of plan';
   }
+
+  function actionButton(className, text, onClick) {
+    const button = make('button', className, text);
+    button.type = 'button';
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  function renderActions(item, index) {
+    const actions = make('div', 'row-actions');
+    const up = actionButton('btn btn-ghost', 'Move up', () => edit((p) => moveItem(p, item.id, -1)));
+    up.disabled = index === 0;
+    const down = actionButton('btn btn-ghost', 'Move down', () => edit((p) => moveItem(p, item.id, 1)));
+    down.disabled = index === plan.items.length - 1;
+    actions.append(up, down, actionButton('btn btn-danger', 'Remove', () => removeRow(item.id)));
+    return actions;
+  }
+
+  /** Removing the current item leaves its content loaded (and on air); current falls back to the item before it. */
+  function removeRow(id) {
+    enqueue(async () => {
+      currentId = currentAfterRemove(plan, currentId, id);
+      openRowId = null;
+      await commit(removeItem(plan, id));
+    });
+  }
+
+  function wireDrag(li, item) {
+    li.draggable = true;
+    li.addEventListener('dragstart', (e) => {
+      dragId = item.id;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', item.id);
+    });
+    li.addEventListener('dragover', (e) => { if (dragId) e.preventDefault(); });
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const moving = dragId;
+      dragId = null;
+      if (moving && moving !== item.id) edit((p) => moveItemTo(p, moving, indexOfItem(p, item.id)));
+    });
+    li.addEventListener('dragend', () => { dragId = null; });
+  }
+
 
   function renderRows() {
     if (!plan.items.length) {

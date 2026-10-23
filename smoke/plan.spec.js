@@ -278,3 +278,75 @@ test.describe('plan tab: running a plan', () => {
     await expect(currentTitle(dock)).toContainText('John 3:16');
   });
 });
+
+async function threeSongs(context) {
+  const { dock, overlay } = await openPair(context);
+  await addSongToPlan(dock, 'Song A', ['text of A']);
+  await addSongToPlan(dock, 'Song B', ['text of B']);
+  await addSongToPlan(dock, 'Song C', ['text of C']);
+  await dock.click('#tab-plan');
+  return { dock, overlay };
+}
+
+const rowOf = (dock, title) => dock.locator('.plan-item', { hasText: title });
+
+test.describe('plan tab: changing a plan while it runs', () => {
+  test('Move up from a row menu reorders and the current item follows its item', async ({ context }) => {
+    const { dock } = await threeSongs(context);
+    await dock.click('#btn-next-item');
+    await expect(currentTitle(dock)).toHaveText('Song A');
+    await rowOf(dock, 'Song C').locator('.plan-more').click();
+    await rowOf(dock, 'Song C').getByRole('button', { name: 'Move up' }).click();
+    expect(await titles(dock)).toEqual(['Song A', 'Song C', 'Song B']);
+    await rowOf(dock, 'Song C').getByRole('button', { name: 'Move up' }).click();
+    expect(await titles(dock)).toEqual(['Song C', 'Song A', 'Song B']);
+    await expect(currentTitle(dock)).toHaveText('Song A');
+  });
+
+  test('dragging a row by its grip reorders the plan', async ({ context }) => {
+    const { dock } = await threeSongs(context);
+    await dock.locator('.plan-item').nth(2).locator('.plan-grip').dragTo(dock.locator('.plan-item').nth(0));
+    expect(await titles(dock)).toEqual(['Song C', 'Song A', 'Song B']);
+  });
+
+  test('removing the current item leaves it on air and current falls back', async ({ context }) => {
+    const { dock, overlay } = await threeSongs(context);
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#ov-body')).toContainText('text of A');
+    await dock.locator('.plan-item.cur .plan-more').click();
+    await dock.locator('.plan-item.cur').getByRole('button', { name: 'Remove' }).click();
+    expect(await titles(dock)).toEqual(['Song B', 'Song C']);
+    await expect(dock.locator('.plan-item.cur')).toHaveCount(0);
+    await expect(overlay.locator('#ov-body')).toContainText('text of A');
+    await expect(dock.locator('#plan-line')).toContainText('Next: Song B');
+    await dock.click('#btn-next-item');
+    await expect(currentTitle(dock)).toHaveText('Song B');
+  });
+
+  test('a song added while the plan runs lands right after the current item', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await addSongToPlan(dock, 'Song A', ['a']);
+    await addSongToPlan(dock, 'Song B', ['b']);
+    await dock.click('#tab-plan');
+    await dock.click('#btn-next-item');
+    await addSongToPlan(dock, 'Song C', ['c']);
+    await dock.click('#tab-plan');
+    expect(await titles(dock)).toEqual(['Song A', 'Song C', 'Song B']);
+    await expect(currentTitle(dock)).toHaveText('Song A');
+  });
+
+  test('opening another plan while live leaves the screen alone', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await addSongToPlan(dock, 'Song A', ['text of A']);
+    await dock.click('#tab-plan');
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    dock.once('dialog', (d) => d.accept('Evening'));
+    await planMenu(dock, 'plan-new');
+    await expect(dock.locator('#plan-select option:checked')).toHaveText('Evening');
+    await expect(dock.locator('.plan-item.cur')).toHaveCount(0);
+    await expect(overlay.locator('#ov-body')).toContainText('text of A');
+    await expect(dock.locator('#status-pill')).toHaveText('LIVE');
+  });
+});

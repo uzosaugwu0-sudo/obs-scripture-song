@@ -2612,6 +2612,21 @@ ${DELIMITER}
     const index = at === -1 ? plan.items.length : at + 1;
     return { ...plan, items: [...plan.items.slice(0, index), item, ...plan.items.slice(index)] };
   }
+  function moveItemTo(plan, id, toIndex) {
+    const from = plan.items.findIndex((i) => i.id === id);
+    if (from === -1) return plan;
+    const to = Math.max(0, Math.min(plan.items.length - 1, toIndex));
+    if (to === from) return plan;
+    const rest = plan.items.filter((i) => i.id !== id);
+    return { ...plan, items: [...rest.slice(0, to), plan.items[from], ...rest.slice(to)] };
+  }
+  function moveItem(plan, id, delta) {
+    const from = plan.items.findIndex((i) => i.id === id);
+    return from === -1 ? plan : moveItemTo(plan, id, from + delta);
+  }
+  function removeItem(plan, id) {
+    return plan.items.some((i) => i.id === id) ? { ...plan, items: plan.items.filter((i) => i.id !== id) } : plan;
+  }
   var renamePlan = (plan, name) => ({ ...plan, name: cleanName(name) });
   function uniqueName(plans, name, exceptId = null) {
     const base = cleanName(name);
@@ -2773,6 +2788,11 @@ ${DELIMITER}
     }
     return null;
   }
+  function currentAfterRemove(plan, currentId, removedId) {
+    if (currentId !== removedId) return currentId;
+    const at = indexOfItem(plan, removedId);
+    return at > 0 ? plan.items[at - 1].id : null;
+  }
   function planSummary(plan, currentId, library) {
     const total = plan.items.length;
     if (!total) return null;
@@ -2801,6 +2821,8 @@ ${DELIMITER}
     let picking = null;
     let queue = Promise.resolve();
     let loading = false;
+    let openRowId = null;
+    let dragId = null;
     const enqueue = (job) => {
       queue = queue.then(job).catch(report2);
       return queue;
@@ -2865,13 +2887,65 @@ ${DELIMITER}
       title.type = "button";
       title.addEventListener("click", () => loadItem(item));
       const state = make("span", "plan-status", statusText(item, index, currentIndex));
-      li.append(grip, icon, title, state);
+      const more = make("button", "plan-more", "\u22EF");
+      more.type = "button";
+      more.setAttribute("aria-label", "Actions for " + itemTitle(item, library));
+      more.setAttribute("aria-expanded", String(openRowId === item.id));
+      more.addEventListener("click", () => {
+        openRowId = openRowId === item.id ? null : item.id;
+        render();
+      });
+      li.append(grip, icon, title, state, more);
+      if (openRowId === item.id) li.appendChild(renderActions(item, index));
+      wireDrag(li, item);
       return li;
     }
     function renderNext() {
       const next = nextLoadable(plan, currentId, library);
       btnNext.disabled = !next;
       btnNext.textContent = !plan.items.length || next ? "Next item \xBB" : "End of plan";
+    }
+    function actionButton(className, text, onClick) {
+      const button = make("button", className, text);
+      button.type = "button";
+      button.addEventListener("click", onClick);
+      return button;
+    }
+    function renderActions(item, index) {
+      const actions = make("div", "row-actions");
+      const up = actionButton("btn btn-ghost", "Move up", () => edit((p) => moveItem(p, item.id, -1)));
+      up.disabled = index === 0;
+      const down = actionButton("btn btn-ghost", "Move down", () => edit((p) => moveItem(p, item.id, 1)));
+      down.disabled = index === plan.items.length - 1;
+      actions.append(up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
+      return actions;
+    }
+    function removeRow(id) {
+      enqueue(async () => {
+        currentId = currentAfterRemove(plan, currentId, id);
+        openRowId = null;
+        await commit(removeItem(plan, id));
+      });
+    }
+    function wireDrag(li, item) {
+      li.draggable = true;
+      li.addEventListener("dragstart", (e) => {
+        dragId = item.id;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", item.id);
+      });
+      li.addEventListener("dragover", (e) => {
+        if (dragId) e.preventDefault();
+      });
+      li.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const moving = dragId;
+        dragId = null;
+        if (moving && moving !== item.id) edit((p) => moveItemTo(p, moving, indexOfItem(p, item.id)));
+      });
+      li.addEventListener("dragend", () => {
+        dragId = null;
+      });
     }
     function renderRows() {
       if (!plan.items.length) {
