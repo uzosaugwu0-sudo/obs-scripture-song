@@ -32,6 +32,17 @@ describe('createRecordFolder', () => {
     expect(dir.files.has('thing.json')).toBe(true);
   });
 
+  it('lists a second file with an id already seen as unreadable and leaves it alone', async () => {
+    const copy = JSON.stringify({ id: '1', name: 'A' });
+    const dir = createFakeDir({ 'a.json': copy, 'a copy.json': copy });
+    const folder = createRecordFolder(dir, opts);
+    const { records, errors } = await folder.list();
+    expect(records).toHaveLength(1);
+    expect(errors).toEqual([{ file: 'a copy.json', message: 'Duplicate id 1' }]);
+    await folder.write({ id: '1', name: 'Renamed' });
+    expect(dir.files.get('a copy.json')).toBe(copy);
+  });
+
   it('ignores subfolders when listing', async () => {
     const dir = createFakeDir();
     await dir.getDirectoryHandle('plans', { create: true });

@@ -84,6 +84,7 @@ function wireDiagnosticsPanel() {
     tabs.scripture = initScriptureTab({
       session, scripture, store, setStatus: status.setStatus, refresh: () => liveBar.refresh(),
       addToPlan: (ref, translation, keepOpen) => tabs.plan.addReading(ref, translation, keepOpen),
+      isPicking: () => !!tabs.plan && tabs.plan.isPicking(),
     });
     let libraryTools = null;
     const library = createLibrary({
@@ -96,7 +97,7 @@ function wireDiagnosticsPanel() {
     });
     const planStore = createPlanStore({
       local: createLocalPlanStore(window.localStorage, report('plans')),
-      onError: report('plans'),
+      onError: (err) => { report('plans')(err); library.markLost(); },
       canWrite: () => library.mode() === 'folder',
     });
     tabs.songs = initSongsTab({

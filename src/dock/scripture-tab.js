@@ -3,7 +3,7 @@ import { LANGUAGES, TRANSLATIONS } from '../scripture/translations.js';
 import { buildReference, stepReference } from '../scripture/reference.js';
 import { initSmartBox } from './smart-box.js';
 
-export function initScriptureTab({ session, scripture, store, setStatus, refresh, addToPlan }) {
+export function initScriptureTab({ session, scripture, store, setStatus, refresh, addToPlan, isPicking = () => false }) {
   const verseText = $('verse-text'), languageSel = $('language-sel'), translationSel = $('translation-sel'),
         autoShowCb = $('auto-show-cb'), randomScope = $('random-scope'), btnRandom = $('btn-random'), btnToPlan = $('btn-verse-to-plan'),
         results = $('search-results');
@@ -50,7 +50,7 @@ export function initScriptureTab({ session, scripture, store, setStatus, refresh
   }
 
   /** True when the verse loaded, false when the lookup failed, null when another lookup was still running. */
-  async function lookup(reference, { autoShow = autoShowCb.checked } = {}) {
+  async function lookup(reference, { autoShow = autoShowCb.checked && !isPicking() } = {}) {
     if (busy) return null;
     busy = true;
     setStatus('Looking up ' + reference + '...', 'loading');

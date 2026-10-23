@@ -12,22 +12,23 @@ export function createPlanStore({ local, onError = () => {}, canWrite = () => tr
   let plans = local.load();
   let folder = null;
   let unreadable = [];
-  const dirty = new Set();
+  const dirty = new Set(local.loadDirty());
 
   async function persist({ write = [], remove = [] } = {}) {
     if (!folder || !canWrite()) {
       write.forEach((p) => dirty.add(p.id));
-      local.save(plans);
-      return;
-    }
-    try {
-      for (const plan of write) await folder.write(plan);
-      for (const id of remove) await folder.remove(id);
-    } catch (err) {
-      onError(err);
-      write.forEach((p) => dirty.add(p.id));
+    } else {
+      try {
+        for (const plan of write) await folder.write(plan);
+        for (const id of remove) await folder.remove(id);
+        write.forEach((p) => dirty.delete(p.id));
+      } catch (err) {
+        onError(err);
+        write.forEach((p) => dirty.add(p.id));
+      }
     }
     local.save(plans);
+    local.saveDirty([...dirty]);
   }
 
   const get = (id) => plans.find((p) => p.id === id) || null;

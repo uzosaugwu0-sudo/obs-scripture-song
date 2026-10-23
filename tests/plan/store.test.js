@@ -121,6 +121,21 @@ describe('plan store with a folder', () => {
     expect(plansDir(dir).files.has('Sunday.json')).toBe(true);
   });
 
+  it('remembers edits made while the folder was unavailable, even across a restart', async () => {
+    const storage = memoryStorage();
+    const open = () => createPlanStore({ local: createLocalPlanStore(storage), uid: counter() });
+    const dir = createFakeDir();
+    const first = open();
+    await first.attach(dir);
+    await first.save(plan('p1', 'Sunday', [item]));
+    const offline = open();
+    await offline.save(plan('p1', 'Sunday', [item, { id: 'i_2', type: 'song', songId: 's2' }]));
+    const restarted = open();
+    await restarted.attach(dir);
+    expect(restarted.get('p1').items).toHaveLength(2);
+    expect(JSON.parse(plansDir(dir).files.get('Sunday.json')).items).toHaveLength(2);
+  });
+
   it('detach stops writing to the folder but keeps the plans', async () => {
     const { store } = setup();
     const dir = createFakeDir();

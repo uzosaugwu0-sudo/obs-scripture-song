@@ -253,7 +253,7 @@ export function initSongsTab({ session, library, setStatus, refresh, addToPlan }
     if (!song || activeSlideIdx === null) return;
     await library.save({ ...song, slides: song.slides.map((s, i) => (i === activeSlideIdx ? slideText.value : s)) });
     renderChips();
-    if (session.isLive && session.liveTab === 'songs' && shownIdx === activeSlideIdx) session.resendIfLive();
+    if (session.isLive && session.liveTab === 'songs' && shownIdx === activeSlideIdx) session.resendIfLive({ fresh: true });
     refresh();
     setStatus('Slide updated.', 'success');
   }

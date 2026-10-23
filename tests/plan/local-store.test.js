@@ -34,6 +34,16 @@ describe('createLocalPlanStore', () => {
     expect(local.loadLastId()).toBeNull();
   });
 
+  it('stores the ids of plans with unsaved folder edits', () => {
+    const storage = memoryStorage();
+    const local = createLocalPlanStore(storage);
+    expect(local.loadDirty()).toEqual([]);
+    local.saveDirty(['p1', 'p2']);
+    expect(createLocalPlanStore(storage).loadDirty()).toEqual(['p1', 'p2']);
+    storage.map.set('obs-stage-plans-dirty', '{{');
+    expect(createLocalPlanStore(storage).loadDirty()).toEqual([]);
+  });
+
   it('never throws when storage is unavailable', () => {
     const errors = [];
     const broken = { getItem() { throw new Error('no'); }, setItem() { throw new Error('no'); }, removeItem() { throw new Error('no'); } };

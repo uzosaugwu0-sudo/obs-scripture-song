@@ -328,6 +328,7 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
 
   return {
     render, reload, onView, addSong, addReading, nextItem, prevItem,
+    isPicking: () => picking !== null,
     summary: () => planSummary(plan, currentId, library),
   };
 }

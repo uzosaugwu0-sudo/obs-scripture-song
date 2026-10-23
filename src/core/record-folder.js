@@ -48,6 +48,7 @@ export function createRecordFolder(dirHandle, { isRecord, toRecord, nameOf, labe
   async function list() {
     const records = [];
     const errors  = [];
+    const seen    = new Set();   // ids already read, so a copied file cannot shadow the original
     fileOf.clear();
     occupied.clear();
     for await (const entry of dirHandle.values()) {
@@ -56,6 +57,8 @@ export function createRecordFolder(dirHandle, { isRecord, toRecord, nameOf, labe
         const file = await entry.getFile();
         const data = JSON.parse(await file.text());
         if (!isRecord(data)) throw new Error(`Not a ${label} file`);
+        if (seen.has(data.id)) throw new Error('Duplicate id ' + data.id);
+        seen.add(data.id);
         records.push(toRecord(data));
         fileOf.set(data.id, entry.name);
       } catch (err) {

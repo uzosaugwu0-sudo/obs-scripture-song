@@ -55,6 +55,32 @@ describe('session', () => {
     expect(session.liveTab).toBe('songs');
   });
 
+  it('restyles what is on air, not content loaded afterwards', () => {
+    const { session, sent } = setup();
+    session.setTab('songs');
+    session.show();
+    session.resendIfLive();
+    expect(sent.at(-1)).toMatchObject({ action: 'show', kind: 'song', body: 'Amazing grace' });
+  });
+
+  it('re-sends fresh content only when asked, for edits to the live slide', () => {
+    const sent = [];
+    let song = { title: 'Amazing Grace', body: 'Amazing grace' };
+    const session = createSession({
+      transport: { send: (s) => { sent.push(s); return s; } },
+      readSettings: () => ({ theme: 'dark' }),
+      providers: { scripture: () => ({ body: '', reference: '' }), songs: () => song },
+    });
+    session.setTab('songs');
+    session.show();
+    song = { title: 'How Great', body: 'next item preview' };
+    session.resendIfLive();
+    expect(sent.at(-1).body).toBe('Amazing grace');
+    expect(sent.at(-1).title).toBe('Amazing Grace');
+    session.resendIfLive({ fresh: true });
+    expect(sent.at(-1).body).toBe('next item preview');
+  });
+
   it('does nothing on resend when nothing is live', () => {
     const { session, sent } = setup();
     session.resendIfLive();

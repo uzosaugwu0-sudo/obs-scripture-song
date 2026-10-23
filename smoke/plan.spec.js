@@ -350,3 +350,33 @@ test.describe('plan tab: changing a plan while it runs', () => {
     await expect(dock.locator('#status-pill')).toHaveText('LIVE');
   });
 });
+
+test.describe('plan tab: nothing reaches the screen without Show', () => {
+  test('looking up a verse in picker mode never puts it on air, even with Auto Show', async ({ context }) => {
+    await blockBibleApi(context);
+    const { dock, overlay } = await openPair(context);
+    await dock.click('#tab-scripture');
+    await dock.check('#auto-show-cb');
+    await dock.click('#tab-plan');
+    await dock.click('#btn-plan-add-verse');
+    await dock.fill('#smart-input', 'John 3:16');
+    await dock.press('#smart-input', 'Enter');
+    await expect(dock.locator('#verse-text')).not.toHaveValue('');
+    await expect(dock.locator('#status-pill')).toHaveText('OFF');
+    await expect(overlay.locator('#stage.hidden')).toHaveCount(1);
+  });
+
+  test('a style change after Next item keeps the on-air slide, not the loaded one', async ({ context }) => {
+    const { dock, overlay } = await runningPlan(context);
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#ov-body')).toContainText('Amazing grace');
+    await dock.click('#btn-next-item');
+    await expect(dock.locator('#preview-sub')).toContainText('John 3:16');
+    await dock.click('#tab-style');
+    await dock.click('#position-seg button[data-value="top"]');
+    await expect(overlay.locator('#stage.pos-top')).toHaveCount(1);
+    await expect(overlay.locator('#ov-body')).toContainText('Amazing grace');
+    await expect(overlay.locator('#ov-body')).not.toContainText('God so loved');
+  });
+});
