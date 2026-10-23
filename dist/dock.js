@@ -29,14 +29,16 @@
   var TABS = ["scripture", "songs"];
   function createSession({ transport, readSettings, providers, onChange = () => {
   } }) {
-    const s = { activeTab: "scripture", isLive: false, liveTab: null, phase: "off" };
+    const s = { activeTab: "scripture", isLive: false, liveTab: null, phase: "off", liveContent: null };
     const snapshot = () => ({ activeTab: s.activeTab, isLive: s.isLive, liveTab: s.liveTab, phase: s.phase });
     const notify = () => onChange(snapshot());
     function content(tab) {
       return tab === "scripture" ? { kind: "verse", title: "", ...providers.scripture() } : { kind: "song", reference: "", ...providers.songs() };
     }
-    function buildState(action, { forShow = false } = {}) {
-      const tab = action === "show" && s.isLive && s.liveTab && !forShow ? s.liveTab : s.activeTab;
+    function buildState(action, { forShow = false, fresh = false } = {}) {
+      const live = action === "show" && s.isLive && s.liveTab && !forShow;
+      if (live && !fresh && s.liveContent) return { ...readSettings(), action, visible: true, ...s.liveContent };
+      const tab = live ? s.liveTab : s.activeTab;
       return { ...readSettings(), action, visible: action === "show", ...content(tab) };
     }
     return {
@@ -59,7 +61,9 @@
         notify();
       },
       show() {
-        transport.send(buildState("show", { forShow: true }));
+        const state = buildState("show", { forShow: true });
+        transport.send(state);
+        s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body };
         s.liveTab = s.activeTab;
         s.isLive = true;
         s.phase = "live";
@@ -75,11 +79,13 @@
         transport.send({ action: "clear", visible: false });
         s.isLive = false;
         s.liveTab = null;
+        s.liveContent = null;
         s.phase = "off";
         notify();
       },
-      resendIfLive() {
-        if (s.isLive) transport.send(buildState("show"));
+      /** Re-send what is on air with the current style. fresh: true re-reads the content too (an edit to the live slide). */
+      resendIfLive({ fresh = false } = {}) {
+        if (s.isLive) transport.send(buildState("show", { fresh }));
       }
     };
   }
@@ -391,7 +397,7 @@
   var PHASE_LABEL = { off: "OFF", live: "LIVE", hidden: "HIDDEN" };
   var EMPTY_PREVIEW = { has: false, text: "Nothing loaded", sub: "Look up a verse or pick a slide", canNav: false };
   function initLiveBar({ session, tabs, setStatus }) {
-    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
+    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
     const activeTab = () => tabs[session.activeTab] || null;
     function liveLabel() {
       if (session.phase !== "live") return "";
@@ -407,6 +413,9 @@
       what.textContent = liveLabel();
       previewText.textContent = p.text;
       previewSub.textContent = p.sub;
+      const planText = tabs.plan ? tabs.plan.summary() : null;
+      planLine.textContent = planText || "";
+      planLine.classList.toggle("hidden", !planText);
       btnShow.disabled = !p.has;
       btnHide.disabled = !session.isLive;
       btnPrev.disabled = !p.canNav;
@@ -443,6 +452,12 @@
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
         step(-1);
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        if (tabs.plan) tabs.plan.nextItem();
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        if (tabs.plan) tabs.plan.prevItem();
       } else if (e.key === " ") {
         e.preventDefault();
         if (session.isLive) btnHide.click();
@@ -1114,8 +1129,8 @@
   }
 
   // src/dock/scripture-tab.js
-  function initScriptureTab({ session, scripture, store, setStatus, refresh }) {
-    const verseText = $("verse-text"), languageSel = $("language-sel"), translationSel = $("translation-sel"), autoShowCb = $("auto-show-cb"), randomScope = $("random-scope"), btnRandom = $("btn-random"), results = $("search-results");
+  function initScriptureTab({ session, scripture, store, setStatus, refresh, addToPlan, isPicking = () => false }) {
+    const verseText = $("verse-text"), languageSel = $("language-sel"), translationSel = $("translation-sel"), autoShowCb = $("auto-show-cb"), randomScope = $("random-scope"), btnRandom = $("btn-random"), btnToPlan = $("btn-verse-to-plan"), results = $("search-results");
     let plainRef = "";
     let refLabel = "";
     let busy = false;
@@ -1145,23 +1160,38 @@
       verseText.value = result.text;
       plainRef = result.rawRef;
       refLabel = result.reference;
+      btnToPlan.disabled = false;
       smart.setValue(result.rawRef);
       hideResults();
       refresh();
       setStatus(result.reference, "success");
     }
-    async function lookup(reference) {
-      if (busy) return;
+    async function lookup(reference, { autoShow = autoShowCb.checked && !isPicking() } = {}) {
+      if (busy) return null;
       busy = true;
       setStatus("Looking up " + reference + "...", "loading");
       const result = await scripture.fetchVerse(reference, translation());
       busy = false;
       if (result.error) {
         setStatus(result.error, "error");
-        return;
+        return false;
       }
       apply(result);
-      if (autoShowCb.checked) session.show();
+      if (autoShow) session.show();
+      return true;
+    }
+    async function loadReading(reference, translationKey) {
+      if (busy) {
+        setStatus("Still loading a verse, try again in a moment.", "");
+        return null;
+      }
+      const entry = TRANSLATIONS.find((t) => t.key === translationKey);
+      if (entry && entry.key !== translation()) {
+        languageSel.value = entry.lang;
+        fillTranslations(entry.key);
+        store.update({ language: languageSel.value, translation: translation() });
+      }
+      return lookup(reference, { autoShow: false });
     }
     async function step(dir) {
       if (!plainRef || busy) return;
@@ -1232,6 +1262,9 @@
     });
     autoShowCb.addEventListener("change", () => store.update({ autoShow: autoShowCb.checked }));
     verseText.addEventListener("input", refresh);
+    btnToPlan.addEventListener("click", (e) => {
+      if (plainRef) addToPlan(plainRef, translation(), e.shiftKey);
+    });
     btnRandom.addEventListener("click", async () => {
       setStatus("Picking a verse...", "loading");
       const picked = await scripture.randomReference(translation(), randomScope.value);
@@ -1253,6 +1286,7 @@
         };
       },
       step,
+      loadReading,
       focus: () => smart.focus()
     };
   }
@@ -1526,8 +1560,8 @@
   }
 
   // src/dock/songs-tab.js
-  function initSongsTab({ session, library, setStatus, refresh }) {
-    const search = $("song-search"), listEl = $("song-list"), view = $("song-view"), nameEl = $("song-name"), btnAll = $("btn-all-songs"), btnEdit = $("btn-edit-song"), cardsEl = $("slide-cards"), editor = $("song-editor"), titleInput = $("song-title-input"), slideList = $("slide-list"), slideText = $("slide-textarea"), btnAdd = $("btn-add-slide"), btnUpdate = $("btn-update-slide"), btnDelSlide = $("btn-delete-slide"), btnSave = $("btn-save-song"), btnDelete = $("btn-delete-song"), btnDone = $("btn-done-edit"), btnNew = $("btn-new-song");
+  function initSongsTab({ session, library, setStatus, refresh, addToPlan }) {
+    const search = $("song-search"), listEl = $("song-list"), view = $("song-view"), nameEl = $("song-name"), btnAll = $("btn-all-songs"), btnToPlan = $("btn-song-to-plan"), btnEdit = $("btn-edit-song"), cardsEl = $("slide-cards"), editor = $("song-editor"), titleInput = $("song-title-input"), slideList = $("slide-list"), slideText = $("slide-textarea"), btnAdd = $("btn-add-slide"), btnUpdate = $("btn-update-slide"), btnDelSlide = $("btn-delete-slide"), btnSave = $("btn-save-song"), btnDelete = $("btn-delete-song"), btnDone = $("btn-done-edit"), btnNew = $("btn-new-song");
     let activeSongId = null;
     let activeSlideIdx = null;
     let shownIdx = -1;
@@ -1586,6 +1620,16 @@
         const count = document.createElement("span");
         count.className = "count";
         count.textContent = song.slides.length + (song.slides.length === 1 ? " slide" : " slides");
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "add";
+        add.textContent = "+ Plan";
+        add.title = "Add this song to the open plan (hold Shift to keep choosing)";
+        add.setAttribute("aria-label", "Add " + (song.title || "Untitled") + " to the plan");
+        add.addEventListener("click", (e) => {
+          e.stopPropagation();
+          addToPlan(song.id, e.shiftKey);
+        });
         const del = document.createElement("button");
         del.type = "button";
         del.className = "del";
@@ -1596,7 +1640,7 @@
           e.stopPropagation();
           removeSong(song);
         });
-        li.append(title, count, del);
+        li.append(title, count, add, del);
         if (excerpt) {
           const note = document.createElement("span");
           note.className = "excerpt";
@@ -1654,9 +1698,10 @@
       btnDelete.disabled = !song;
       refresh();
     }
-    function open(id) {
+    function open(id, { preview = false } = {}) {
       activeSongId = id;
-      activeSlideIdx = null;
+      const song = getSong();
+      activeSlideIdx = preview && song && song.slides.length ? 0 : null;
       shownIdx = -1;
       editing = false;
       listOpen = false;
@@ -1750,7 +1795,7 @@
       if (!song || activeSlideIdx === null) return;
       await library.save({ ...song, slides: song.slides.map((s, i) => i === activeSlideIdx ? slideText.value : s) });
       renderChips();
-      if (session.isLive && session.liveTab === "songs" && shownIdx === activeSlideIdx) session.resendIfLive();
+      if (session.isLive && session.liveTab === "songs" && shownIdx === activeSlideIdx) session.resendIfLive({ fresh: true });
       refresh();
       setStatus("Slide updated.", "success");
     }
@@ -1776,6 +1821,10 @@
       render();
     });
     btnEdit.addEventListener("click", startEditing);
+    btnToPlan.addEventListener("click", (e) => {
+      const song = getSong();
+      if (song) addToPlan(song.id, e.shiftKey);
+    });
     btnNew.addEventListener("click", startNew);
     btnDone.addEventListener("click", () => {
       if (hasUnsavedEdits() && !discardArmed) {
@@ -1819,6 +1868,19 @@
           sub: song ? song.title + " \xB7 " + where : "Pick a song and a slide",
           canNav: !!(song && song.slides.length)
         };
+      },
+      /** Open a song with slide 1 previewed, not shown. False when unsaved editor text would be lost or the song is gone. */
+      loadSong(id) {
+        if (editing && hasUnsavedEdits()) return false;
+        if (!library.get(id)) return false;
+        open(id, { preview: true });
+        return true;
+      },
+      /** Which song and slide is loaded, for the plan's "slide 2/4" label. */
+      position() {
+        const song = getSong();
+        if (!song) return null;
+        return { songId: song.id, index: shownIdx >= 0 ? shownIdx : activeSlideIdx, count: song.slides.length };
       },
       step,
       markShown() {
@@ -2131,13 +2193,12 @@ ${DELIMITER}
     return { close };
   }
 
-  // src/songs/folder.js
-  var HANDLE_KEY = "library-dir";
+  // src/core/record-folder.js
   var BACKSLASH2 = String.fromCharCode(92);
-  function safeFilename(title) {
-    return (title || "untitled").replace(/[<>:"/|?*\x00-\x1f]/g, "_").split(BACKSLASH2).join("_").replace(/\s+/g, "_").replace(/_+/g, "_").slice(0, 80).replace(/^_+|_+$/g, "") || "song";
+  function safeFilename(title, fallback = "song") {
+    return (title || "untitled").replace(/[<>:"/|?*\x00-\x1f]/g, "_").split(BACKSLASH2).join("_").replace(/\s+/g, "_").replace(/_+/g, "_").slice(0, 80).replace(/^_+|_+$/g, "") || fallback;
   }
-  function createSongFolder(dirHandle) {
+  function createRecordFolder(dirHandle, { isRecord, toRecord, nameOf, label = "song" }) {
     const fileOf = /* @__PURE__ */ new Map();
     const occupied = /* @__PURE__ */ new Set();
     async function writeText(name, text) {
@@ -2173,8 +2234,9 @@ ${DELIMITER}
       return name;
     }
     async function list() {
-      const songs = [];
+      const records = [];
       const errors = [];
+      const seen = /* @__PURE__ */ new Set();
       fileOf.clear();
       occupied.clear();
       for await (const entry of dirHandle.values()) {
@@ -2182,22 +2244,24 @@ ${DELIMITER}
         try {
           const file = await entry.getFile();
           const data = JSON.parse(await file.text());
-          if (!isSongRecord(data)) throw new Error("Not a song file");
-          songs.push(toSongRecord(data));
+          if (!isRecord(data)) throw new Error(`Not a ${label} file`);
+          if (seen.has(data.id)) throw new Error("Duplicate id " + data.id);
+          seen.add(data.id);
+          records.push(toRecord(data));
           fileOf.set(data.id, entry.name);
         } catch (err) {
           occupied.add(entry.name.toLowerCase());
           errors.push({ file: entry.name, message: err.message });
         }
       }
-      return { songs, errors };
+      return { records, errors };
     }
-    async function write(song) {
-      const record = toSongRecord(song);
-      const previous = fileOf.get(record.id);
-      const name = unusedName(safeFilename(record.title), record.id);
-      await writeText(name, JSON.stringify(record, null, 2));
-      fileOf.set(record.id, name);
+    async function write(record) {
+      const clean = toRecord(record);
+      const previous = fileOf.get(clean.id);
+      const name = unusedName(safeFilename(nameOf(clean), label), clean.id);
+      await writeText(name, JSON.stringify(clean, null, 2));
+      fileOf.set(clean.id, name);
       if (previous && previous !== name) await removeFile(previous);
     }
     async function remove(id) {
@@ -2206,10 +2270,23 @@ ${DELIMITER}
       await removeFile(name);
       fileOf.delete(id);
     }
-    async function writeLyrics(songs) {
-      await writeText(LYRICS_FILENAME, buildLyricsFile(songs));
-    }
-    return { name: dirHandle.name, list, write, remove, writeLyrics };
+    return { name: dirHandle.name, list, write, remove, writeText };
+  }
+
+  // src/songs/folder.js
+  var HANDLE_KEY = "library-dir";
+  function createSongFolder(dirHandle) {
+    const base = createRecordFolder(dirHandle, { isRecord: isSongRecord, toRecord: toSongRecord, nameOf: (s) => s.title, label: "song" });
+    return {
+      name: base.name,
+      async list() {
+        const { records, errors } = await base.list();
+        return { songs: records, errors };
+      },
+      write: base.write,
+      remove: base.remove,
+      writeLyrics: (songs) => base.writeText(LYRICS_FILENAME, buildLyricsFile(songs))
+    };
   }
   async function ensurePermission(handle, { request = false } = {}) {
     if (typeof handle.queryPermission !== "function") return true;
@@ -2223,7 +2300,8 @@ ${DELIMITER}
 
   // src/dock/library-tools.js
   var PICKER_ID = "obs-songs";
-  function initLibraryTools({ library, kv, setStatus, report: report2, onChanged }) {
+  function initLibraryTools({ library, kv, setStatus, report: report2, onChanged, onFolderChange = async () => {
+  } }) {
     const banner = $("library-banner"), btnTools = $("btn-tools"), menu = $("tools-menu"), statusLine = $("library-status"), toolChoose = $("tool-choose-folder"), toolReconnect = $("tool-reconnect"), toolRewrite = $("tool-rewrite-lyrics"), toolStop = $("tool-stop-folder");
     let pendingHandle = null;
     function setMenu(open) {
@@ -2249,6 +2327,12 @@ ${DELIMITER}
       result.errors.forEach((e) => report2(new Error(e.file + ": " + e.message)));
       const skipped = result.errors.length ? " " + result.errors.length + " file(s) were skipped (see Diagnostics)." : "";
       setStatus(successMessage + " " + result.loaded + " song(s) loaded, " + result.carried + " added." + skipped, "success");
+      try {
+        await onFolderChange(handle);
+      } catch (err) {
+        report2(err);
+        setStatus("Songs are ready, but plans could not use the folder.", "error");
+      }
       render();
     }
     async function chooseFolder() {
@@ -2363,6 +2447,7 @@ ${DELIMITER}
     toolStop.addEventListener("click", () => {
       library.detach();
       pendingHandle = null;
+      Promise.resolve(onFolderChange(null)).catch(report2);
       setStatus("No longer using the folder. Songs stay in this browser.", "");
       render();
     });
@@ -2515,12 +2600,556 @@ ${DELIMITER}
     sync();
   }
 
+  // src/plan/model.js
+  var PLAN_VERSION = 1;
+  var DEFAULT_PLAN_NAME = "Untitled plan";
+  var cleanName = (name) => (name || "").trim() || DEFAULT_PLAN_NAME;
+  var isItem = (i) => !!i && typeof i === "object" && typeof i.id === "string" && typeof i.type === "string";
+  function isPlanRecord(x) {
+    return !!x && typeof x === "object" && typeof x.id === "string" && typeof x.name === "string" && (x.v === void 0 || Number.isInteger(x.v) && x.v <= PLAN_VERSION) && Array.isArray(x.items) && x.items.every(isItem);
+  }
+  function toPlanRecord(x) {
+    return { v: PLAN_VERSION, id: x.id, name: x.name, items: x.items.map((i) => ({ ...i })) };
+  }
+  function createPlan(name = DEFAULT_PLAN_NAME, uid2 = uid) {
+    return { v: PLAN_VERSION, id: "p_" + uid2(), name: cleanName(name), items: [] };
+  }
+  var songItem = (songId, uid2 = uid) => ({ id: "i_" + uid2(), type: "song", songId });
+  var readingItem = (ref, translation, uid2 = uid) => ({ id: "i_" + uid2(), type: "reading", ref, translation });
+  function addItem(plan, item, afterId = null) {
+    const at = afterId === null ? -1 : plan.items.findIndex((i) => i.id === afterId);
+    const index = at === -1 ? plan.items.length : at + 1;
+    return { ...plan, items: [...plan.items.slice(0, index), item, ...plan.items.slice(index)] };
+  }
+  function moveItemTo(plan, id, toIndex) {
+    const from = plan.items.findIndex((i) => i.id === id);
+    if (from === -1) return plan;
+    const to = Math.max(0, Math.min(plan.items.length - 1, toIndex));
+    if (to === from) return plan;
+    const rest = plan.items.filter((i) => i.id !== id);
+    return { ...plan, items: [...rest.slice(0, to), plan.items[from], ...rest.slice(to)] };
+  }
+  function moveItem(plan, id, delta) {
+    const from = plan.items.findIndex((i) => i.id === id);
+    return from === -1 ? plan : moveItemTo(plan, id, from + delta);
+  }
+  function removeItem(plan, id) {
+    return plan.items.some((i) => i.id === id) ? { ...plan, items: plan.items.filter((i) => i.id !== id) } : plan;
+  }
+  var renamePlan = (plan, name) => ({ ...plan, name: cleanName(name) });
+  function uniqueName(plans, name, exceptId = null) {
+    const base = cleanName(name);
+    const taken = new Set(plans.filter((p) => p.id !== exceptId).map((p) => p.name.toLowerCase()));
+    if (!taken.has(base.toLowerCase())) return base;
+    let n = 2;
+    while (taken.has((base + " (" + n + ")").toLowerCase())) n += 1;
+    return base + " (" + n + ")";
+  }
+
+  // src/plan/folder.js
+  var PLANS_DIR = "plans";
+  async function createPlanFolder(dirHandle) {
+    const dir = await dirHandle.getDirectoryHandle(PLANS_DIR, { create: true });
+    return createRecordFolder(dir, { isRecord: isPlanRecord, toRecord: toPlanRecord, nameOf: (p) => p.name, label: "plan" });
+  }
+
+  // src/plan/store.js
+  function createPlanStore({ local, onError = () => {
+  }, canWrite = () => true, uid: uid2 = uid }) {
+    let plans = local.load();
+    let folder = null;
+    let unreadable = [];
+    const dirty = new Set(local.loadDirty());
+    async function persist({ write = [], remove: remove2 = [] } = {}) {
+      if (!folder || !canWrite()) {
+        write.forEach((p) => dirty.add(p.id));
+      } else {
+        try {
+          for (const plan of write) await folder.write(plan);
+          for (const id of remove2) await folder.remove(id);
+          write.forEach((p) => dirty.delete(p.id));
+        } catch (err) {
+          onError(err);
+          write.forEach((p) => dirty.add(p.id));
+        }
+      }
+      local.save(plans);
+      local.saveDirty([...dirty]);
+    }
+    const get = (id) => plans.find((p) => p.id === id) || null;
+    async function save(input) {
+      const record = toPlanRecord({ ...input, id: input.id || "p_" + uid2(), name: uniqueName(plans, input.name, input.id) });
+      plans = plans.some((p) => p.id === record.id) ? plans.map((p) => p.id === record.id ? record : p) : [...plans, record];
+      await persist({ write: [record] });
+      return record;
+    }
+    async function remove(id) {
+      if (!get(id)) return;
+      plans = plans.filter((p) => p.id !== id);
+      dirty.delete(id);
+      await persist({ remove: [id] });
+    }
+    async function duplicate(id) {
+      const source = get(id);
+      if (!source) return null;
+      return save({
+        ...source,
+        id: "p_" + uid2(),
+        name: source.name + " (copy)",
+        items: source.items.map((i) => ({ ...i, id: "i_" + uid2() }))
+      });
+    }
+    async function attach(dirHandle) {
+      const newFolder = await createPlanFolder(dirHandle);
+      const { records, errors } = await newFolder.list();
+      const edited = new Set(dirty);
+      dirty.clear();
+      const inFolder = new Set(records.map((p) => p.id));
+      const carried = plans.filter((p) => edited.has(p.id) || !inFolder.has(p.id));
+      folder = newFolder;
+      unreadable = errors;
+      plans = [...records.filter((p) => !edited.has(p.id)), ...carried];
+      await persist({ write: carried });
+      return { loaded: records.length, carried: carried.length, errors };
+    }
+    function detach() {
+      folder = null;
+      unreadable = [];
+      local.save(plans);
+    }
+    return {
+      list: () => plans,
+      get,
+      save,
+      remove,
+      duplicate,
+      attach,
+      detach,
+      unreadable: () => unreadable,
+      lastId: () => local.loadLastId(),
+      setLastId: (id) => local.saveLastId(id)
+    };
+  }
+
+  // src/plan/local-store.js
+  var PLANS_KEY = "obs-stage-plans";
+  var LAST_PLAN_KEY = "obs-stage-last-plan";
+  var DIRTY_KEY = "obs-stage-plans-dirty";
+  function createLocalPlanStore(storage, onError = () => {
+  }) {
+    function load() {
+      try {
+        const raw = storage?.getItem(PLANS_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter(isPlanRecord).map(toPlanRecord) : [];
+      } catch (err) {
+        onError(err);
+        return [];
+      }
+    }
+    function save(plans) {
+      try {
+        storage?.setItem(PLANS_KEY, JSON.stringify(plans));
+      } catch (err) {
+        onError(err);
+      }
+    }
+    function loadLastId() {
+      try {
+        return storage?.getItem(LAST_PLAN_KEY) || null;
+      } catch (err) {
+        onError(err);
+        return null;
+      }
+    }
+    function saveLastId(id) {
+      try {
+        if (id) storage?.setItem(LAST_PLAN_KEY, id);
+        else storage?.removeItem(LAST_PLAN_KEY);
+      } catch (err) {
+        onError(err);
+      }
+    }
+    function loadDirty() {
+      try {
+        const parsed = JSON.parse(storage?.getItem(DIRTY_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+      } catch (err) {
+        onError(err);
+        return [];
+      }
+    }
+    function saveDirty(ids) {
+      try {
+        storage?.setItem(DIRTY_KEY, JSON.stringify(ids));
+      } catch (err) {
+        onError(err);
+      }
+    }
+    return { load, save, loadLastId, saveLastId, loadDirty, saveDirty };
+  }
+
+  // src/plan/cursor.js
+  function itemStatus(item, library) {
+    if (item.type === "song") return library.get(item.songId) ? "ok" : "missing";
+    if (item.type === "reading") return typeof item.ref === "string" && item.ref.trim() ? "ok" : "unsupported";
+    return "unsupported";
+  }
+  function itemTitle(item, library) {
+    const status = itemStatus(item, library);
+    if (item.type === "song") return status === "ok" ? library.get(item.songId).title || "Untitled" : "Song missing";
+    if (item.type === "reading" && status === "ok") return item.ref;
+    return "Unsupported item";
+  }
+  var indexOfItem = (plan, id) => id === null ? -1 : plan.items.findIndex((i) => i.id === id);
+  function nextLoadable(plan, currentId, library) {
+    for (let i = indexOfItem(plan, currentId) + 1; i < plan.items.length; i += 1) {
+      if (itemStatus(plan.items[i], library) === "ok") return plan.items[i];
+    }
+    return null;
+  }
+  function prevLoadable(plan, currentId, library) {
+    for (let i = indexOfItem(plan, currentId) - 1; i >= 0; i -= 1) {
+      if (itemStatus(plan.items[i], library) === "ok") return plan.items[i];
+    }
+    return null;
+  }
+  function currentAfterRemove(plan, currentId, removedId) {
+    if (currentId !== removedId) return currentId;
+    const at = indexOfItem(plan, removedId);
+    return at > 0 ? plan.items[at - 1].id : null;
+  }
+  function planSummary(plan, currentId, library) {
+    const total = plan.items.length;
+    if (!total) return null;
+    const at = indexOfItem(plan, currentId);
+    const next = nextLoadable(plan, currentId, library);
+    const where = at === -1 ? total + (total === 1 ? " item" : " items") : at + 1 + " of " + total;
+    return where + " \xB7 " + (next ? "Next: " + itemTitle(next, library) : "End of plan");
+  }
+
+  // src/dock/plan-tab.js
+  var TYPE_ICON = { song: "\u266B", reading: "\u271D" };
+  var BANNER_TEXT = {
+    local: "Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.",
+    "folder-lost": "Lost access to the library folder. Plans are safe in this browser. Open Songs, Library tools and choose Reconnect."
+  };
+  function make(tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== void 0) el.textContent = text;
+    return el;
+  }
+  function initPlanTab({ session, store, library, tabs, setStatus, showView, refresh, report: report2 }) {
+    const select = $("plan-select"), listEl = $("plan-list"), banner = $("plan-banner"), unreadableEl = $("plan-unreadable"), btnMenu = $("btn-plan-menu"), menu = $("plan-menu"), picker = $("picker-banner"), pickerText = $("picker-text"), btnNext = $("btn-next-item");
+    let plan = store.get(store.lastId()) || store.list()[0] || createPlan();
+    let currentId = null;
+    let picking = null;
+    let queue = Promise.resolve();
+    let loading = false;
+    let openRowId = null;
+    let dragId = null;
+    const enqueue = (job) => {
+      queue = queue.then(job).catch(report2);
+      return queue;
+    };
+    async function commit(next) {
+      plan = next;
+      if (store.get(plan.id) || plan.items.length || plan.name !== DEFAULT_PLAN_NAME) plan = await store.save(plan);
+      store.setLastId(plan.id);
+      render();
+    }
+    const edit = (change) => enqueue(() => commit(change(plan)));
+    const openPlan = (next) => enqueue(async () => {
+      plan = next;
+      currentId = null;
+      store.setLastId(plan.id);
+      render();
+    });
+    function renderSelect() {
+      const known = store.list();
+      const entries = known.some((p) => p.id === plan.id) ? known : [...known, plan];
+      select.replaceChildren(...entries.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => {
+        const option = make("option", "", p.name);
+        option.value = p.id;
+        return option;
+      }));
+      select.value = plan.id;
+    }
+    function renderBanner() {
+      const mode = library.mode();
+      banner.classList.toggle("hidden", mode === "folder");
+      banner.classList.toggle("is-lost", mode === "folder-lost");
+      banner.textContent = BANNER_TEXT[mode] || "";
+      const bad = store.unreadable();
+      unreadableEl.classList.toggle("hidden", !bad.length);
+      unreadableEl.textContent = bad.map((e) => "Unreadable plan file: " + e.file).join(" \xB7 ");
+      picker.classList.toggle("hidden", !picking);
+      pickerText.textContent = "Adding to " + plan.name;
+    }
+    function statusText(item, index, currentIndex) {
+      const status = itemStatus(item, library);
+      if (status !== "ok") return status;
+      if (item.id === currentId) {
+        const pos = item.type === "song" && tabs.songs ? tabs.songs.position() : null;
+        if (pos && pos.songId === item.songId && pos.index !== null) return "slide " + (pos.index + 1) + "/" + pos.count;
+        return "loaded";
+      }
+      if (index < currentIndex) return "done";
+      if (item.type === "song") {
+        const count = library.get(item.songId).slides.length;
+        return count + (count === 1 ? " slide" : " slides");
+      }
+      return item.translation || "reading";
+    }
+    function renderRow(item, index, currentIndex) {
+      const status = itemStatus(item, library);
+      const li = make("li", "plan-item" + (item.id === currentId ? " cur" : "") + (index < currentIndex ? " done" : "") + (status !== "ok" ? " missing" : ""));
+      li.dataset.id = item.id;
+      const grip = make("span", "plan-grip", "\u2261");
+      grip.setAttribute("aria-hidden", "true");
+      const icon = make("span", "plan-icon", TYPE_ICON[item.type] || "?");
+      const title = make("button", "plan-title", itemTitle(item, library));
+      title.type = "button";
+      title.addEventListener("click", () => loadItem(item));
+      const state = make("span", "plan-status", statusText(item, index, currentIndex));
+      const more = make("button", "plan-more", "\u22EF");
+      more.type = "button";
+      more.setAttribute("aria-label", "Actions for " + itemTitle(item, library));
+      more.setAttribute("aria-expanded", String(openRowId === item.id));
+      more.addEventListener("click", () => {
+        openRowId = openRowId === item.id ? null : item.id;
+        render();
+      });
+      li.append(grip, icon, title, state, more);
+      if (openRowId === item.id) li.appendChild(renderActions(item, index));
+      wireDrag(li, item);
+      return li;
+    }
+    function renderNext() {
+      const next = nextLoadable(plan, currentId, library);
+      btnNext.disabled = !next;
+      btnNext.textContent = !plan.items.length || next ? "Next item \xBB" : "End of plan";
+    }
+    function actionButton(className, text, onClick) {
+      const button = make("button", className, text);
+      button.type = "button";
+      button.addEventListener("click", onClick);
+      return button;
+    }
+    function renderActions(item, index) {
+      const actions = make("div", "row-actions");
+      const up = actionButton("btn btn-ghost", "Move up", () => edit((p) => moveItem(p, item.id, -1)));
+      up.disabled = index === 0;
+      const down = actionButton("btn btn-ghost", "Move down", () => edit((p) => moveItem(p, item.id, 1)));
+      down.disabled = index === plan.items.length - 1;
+      actions.append(up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
+      return actions;
+    }
+    function removeRow(id) {
+      enqueue(async () => {
+        currentId = currentAfterRemove(plan, currentId, id);
+        openRowId = null;
+        await commit(removeItem(plan, id));
+      });
+    }
+    function wireDrag(li, item) {
+      li.draggable = true;
+      li.addEventListener("dragstart", (e) => {
+        dragId = item.id;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", item.id);
+      });
+      li.addEventListener("dragover", (e) => {
+        if (dragId) e.preventDefault();
+      });
+      li.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const moving = dragId;
+        dragId = null;
+        if (moving && moving !== item.id) edit((p) => moveItemTo(p, moving, indexOfItem(p, item.id)));
+      });
+      li.addEventListener("dragend", () => {
+        dragId = null;
+      });
+    }
+    function renderRows() {
+      if (!plan.items.length) {
+        listEl.replaceChildren(make("li", "plan-empty faint", "Nothing planned yet. Use + Song or + Verse, or press + Plan on a song or verse."));
+        return;
+      }
+      const currentIndex = indexOfItem(plan, currentId);
+      listEl.replaceChildren(...plan.items.map((item, index) => renderRow(item, index, currentIndex)));
+    }
+    function render() {
+      renderSelect();
+      renderBanner();
+      renderRows();
+      renderNext();
+      refresh();
+    }
+    async function loadItem(item) {
+      if (loading) {
+        setStatus("Still loading, try again in a moment.", "");
+        return;
+      }
+      const status = itemStatus(item, library);
+      if (status !== "ok") {
+        setStatus(status === "missing" ? "That song is no longer in the library." : "This kind of item cannot be loaded yet.", "error");
+        return;
+      }
+      loading = true;
+      try {
+        if (item.type === "song") {
+          if (!tabs.songs.loadSong(item.songId)) {
+            setStatus("Finish or discard the song you are editing first.", "error");
+            return;
+          }
+          session.setTab("songs");
+        } else {
+          const ok = await tabs.scripture.loadReading(item.ref, item.translation);
+          if (ok === null) return;
+          if (ok) session.setTab("scripture");
+        }
+        currentId = item.id;
+        render();
+      } finally {
+        loading = false;
+      }
+    }
+    async function nextItem() {
+      const next = nextLoadable(plan, currentId, library);
+      if (!next) {
+        setStatus("End of the plan.", "");
+        return;
+      }
+      await loadItem(next);
+    }
+    async function prevItem() {
+      const prev = prevLoadable(plan, currentId, library);
+      if (!prev) {
+        setStatus("Start of the plan.", "");
+        return;
+      }
+      await loadItem(prev);
+    }
+    function finishAdd(keepOpen, label) {
+      setStatus("Added " + label + " to " + plan.name + ".", "success");
+      if (picking && !keepOpen) {
+        picking = null;
+        showView("plan");
+      }
+    }
+    async function addSong(songId, keepOpen = false) {
+      await edit((p) => addItem(p, songItem(songId), currentId));
+      const song = library.get(songId);
+      finishAdd(keepOpen, song ? song.title : "song");
+    }
+    async function addReading(ref, translation, keepOpen = false) {
+      await edit((p) => addItem(p, readingItem(ref, translation), currentId));
+      finishAdd(keepOpen, ref);
+    }
+    function startPicking(target) {
+      picking = target;
+      showView(target);
+      if (target === "scripture" && tabs.scripture) tabs.scripture.focus();
+    }
+    function setMenu(open) {
+      menu.classList.toggle("hidden", !open);
+      btnMenu.setAttribute("aria-expanded", String(open));
+    }
+    btnMenu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenu(menu.classList.contains("hidden"));
+    });
+    menu.addEventListener("click", () => setMenu(false));
+    document.addEventListener("click", (e) => {
+      if (!menu.contains(e.target) && e.target !== btnMenu) setMenu(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !menu.classList.contains("hidden")) {
+        setMenu(false);
+        e.stopPropagation();
+      }
+    }, true);
+    $("plan-new").addEventListener("click", () => {
+      const name = prompt("Name for the new plan:", "");
+      if (name === null) return;
+      enqueue(async () => {
+        currentId = null;
+        await commit(createPlan(name));
+      });
+    });
+    $("plan-rename").addEventListener("click", () => {
+      const name = prompt("Rename this plan:", plan.name);
+      if (name === null) return;
+      edit((p) => renamePlan(p, name));
+    });
+    $("plan-duplicate").addEventListener("click", () => enqueue(async () => {
+      if (!store.get(plan.id)) {
+        setStatus("Add an item before duplicating this plan.", "error");
+        return;
+      }
+      const copy = await store.duplicate(plan.id);
+      plan = copy;
+      currentId = null;
+      store.setLastId(plan.id);
+      render();
+      setStatus('Duplicated as "' + copy.name + '".', "success");
+    }));
+    $("plan-delete").addEventListener("click", () => {
+      if (!confirm('Delete the plan "' + plan.name + '"? This cannot be undone.')) return;
+      enqueue(async () => {
+        await store.remove(plan.id);
+        plan = createPlan();
+        currentId = null;
+        store.setLastId(null);
+        render();
+        setStatus("Plan deleted.", "");
+      });
+    });
+    select.addEventListener("change", () => {
+      const chosen = store.get(select.value);
+      select.blur();
+      if (chosen) openPlan(chosen);
+    });
+    btnNext.addEventListener("click", nextItem);
+    $("btn-plan-add-song").addEventListener("click", () => startPicking("songs"));
+    $("btn-plan-add-verse").addEventListener("click", () => startPicking("scripture"));
+    $("picker-back").addEventListener("click", () => showView("plan"));
+    function reload() {
+      enqueue(async () => {
+        const fresh = store.get(plan.id) || store.get(store.lastId()) || store.list()[0];
+        if (fresh) plan = fresh;
+        if (indexOfItem(plan, currentId) === -1) currentId = null;
+        render();
+      });
+    }
+    function onView(name) {
+      if (picking && name !== picking) picking = null;
+      render();
+    }
+    render();
+    return {
+      render,
+      reload,
+      onView,
+      addSong,
+      addReading,
+      nextItem,
+      prevItem,
+      isPicking: () => picking !== null,
+      summary: () => planSummary(plan, currentId, library)
+    };
+  }
+
   // src/dock/main.js
   var diagnostics = createDiagnostics();
   var report = (context) => (err) => diagnostics.log(context, err);
   var EMPTY_SCRIPTURE = { body: "", reference: "" };
   var EMPTY_SONG = { title: "", body: "" };
-  var VIEWS = ["scripture", "songs", "style"];
+  var VIEWS = ["plan", "scripture", "songs", "style"];
   function wireDiagnosticsPanel() {
     const list = $("diag-list"), count = $("diag-count");
     diagnostics.subscribe((entries) => {
@@ -2543,7 +3172,8 @@ ${DELIMITER}
           tab.classList.toggle("on", on);
           tab.setAttribute("aria-selected", String(on));
         });
-        if (name !== "style") session.setTab(name);
+        if (name === "scripture" || name === "songs") session.setTab(name);
+        if (tabs.plan) tabs.plan.onView(name);
         if (liveBar) liveBar.refresh();
       };
       const status = createStatus({ statusBar: $("status-bar") });
@@ -2560,6 +3190,7 @@ ${DELIMITER}
         },
         onChange: () => {
           if (liveBar) liveBar.refresh();
+          if (tabs.plan) tabs.plan.render();
         }
       });
       liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
@@ -2572,21 +3203,33 @@ ${DELIMITER}
         scripture,
         store,
         setStatus: status.setStatus,
-        refresh: () => liveBar.refresh()
+        refresh: () => liveBar.refresh(),
+        addToPlan: (ref, translation, keepOpen) => tabs.plan.addReading(ref, translation, keepOpen),
+        isPicking: () => !!tabs.plan && tabs.plan.isPicking()
       });
       let libraryTools = null;
       const library = createLibrary({
         local: createLocalSongStore(window.localStorage, report("songs")),
         onModeChange: () => {
           if (libraryTools) libraryTools.render();
+          if (tabs.plan) tabs.plan.render();
         },
         onError: report("library")
+      });
+      const planStore = createPlanStore({
+        local: createLocalPlanStore(window.localStorage, report("plans")),
+        onError: (err) => {
+          report("plans")(err);
+          library.markLost();
+        },
+        canWrite: () => library.mode() === "folder"
       });
       tabs.songs = initSongsTab({
         session,
         library,
         setStatus: status.setStatus,
-        refresh: () => liveBar.refresh()
+        refresh: () => liveBar.refresh(),
+        addToPlan: (songId, keepOpen) => tabs.plan.addSong(songId, keepOpen)
       });
       initImportPanel({
         library,
@@ -2594,18 +3237,36 @@ ${DELIMITER}
         report: report("songs"),
         onImported: () => tabs.songs.refreshList()
       });
+      tabs.plan = initPlanTab({
+        session,
+        store: planStore,
+        library,
+        tabs,
+        setStatus: status.setStatus,
+        showView,
+        refresh: () => liveBar.refresh(),
+        report: report("plans")
+      });
       libraryTools = initLibraryTools({
         library,
         kv: openKv("obs-stage-library"),
         setStatus: status.setStatus,
         report: report("library"),
-        onChanged: () => tabs.songs.refreshList()
+        onChanged: () => {
+          tabs.songs.refreshList();
+          tabs.plan.render();
+        },
+        onFolderChange: async (handle) => {
+          if (handle) await planStore.attach(handle);
+          else planStore.detach();
+          tabs.plan.reload();
+        }
       });
       document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showView(b.dataset.tab)));
       wireDiagnosticsPanel();
       initStyleTab({ session, store, setStatus: status.setStatus, report: report("settings") });
       transport.start();
-      showView("scripture");
+      showView("plan");
       await libraryTools.restore();
     } catch (err) {
       diagnostics.log("dock init", err);

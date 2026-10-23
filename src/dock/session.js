@@ -7,7 +7,7 @@ const TABS = ['scripture', 'songs'];
  * of intentionally mutable dock state.
  */
 export function createSession({ transport, readSettings, providers, onChange = () => {} }) {
-  const s = { activeTab: 'scripture', isLive: false, liveTab: null, phase: 'off' };
+  const s = { activeTab: 'scripture', isLive: false, liveTab: null, phase: 'off', liveContent: null };
 
   const snapshot = () => ({ activeTab: s.activeTab, isLive: s.isLive, liveTab: s.liveTab, phase: s.phase });
   const notify   = () => onChange(snapshot());
@@ -18,8 +18,11 @@ export function createSession({ transport, readSettings, providers, onChange = (
       : { kind: 'song', reference: '', ...providers.songs() };
   }
 
-  function buildState(action, { forShow = false } = {}) {
-    const tab = (action === 'show' && s.isLive && s.liveTab && !forShow) ? s.liveTab : s.activeTab;
+  function buildState(action, { forShow = false, fresh = false } = {}) {
+    const live = action === 'show' && s.isLive && s.liveTab && !forShow;
+    // A restyle re-sends what is on air; loading the next plan item must not leak onto the screen.
+    if (live && !fresh && s.liveContent) return { ...readSettings(), action, visible: true, ...s.liveContent };
+    const tab = live ? s.liveTab : s.activeTab;
     return { ...readSettings(), action, visible: action === 'show', ...content(tab) };
   }
 
@@ -37,7 +40,9 @@ export function createSession({ transport, readSettings, providers, onChange = (
       notify();
     },
     show() {
-      transport.send(buildState('show', { forShow: true }));
+      const state = buildState('show', { forShow: true });
+      transport.send(state);
+      s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body };
       s.liveTab = s.activeTab;
       s.isLive = true;
       s.phase = 'live';
@@ -53,11 +58,13 @@ export function createSession({ transport, readSettings, providers, onChange = (
       transport.send({ action: 'clear', visible: false });
       s.isLive = false;
       s.liveTab = null;
+      s.liveContent = null;
       s.phase = 'off';
       notify();
     },
-    resendIfLive() {
-      if (s.isLive) transport.send(buildState('show'));
+    /** Re-send what is on air with the current style. fresh: true re-reads the content too (an edit to the live slide). */
+    resendIfLive({ fresh = false } = {}) {
+      if (s.isLive) transport.send(buildState('show', { fresh }));
     },
   };
 }

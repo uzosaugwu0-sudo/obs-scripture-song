@@ -9,6 +9,7 @@ export async function openPair(context) {
 
 /** Type into the smart box and press Enter. */
 export async function lookup(dock, text) {
+  await dock.click('#tab-scripture');
   await dock.fill('#smart-input', text);
   await dock.press('#smart-input', 'Enter');
 }

@@ -2,7 +2,7 @@
 
 ### Put Bible verses and song lyrics on your church livestream, from one panel.
 
-A free, open-source tool for OBS Studio. You get a control panel docked inside OBS with two tabs — **Scripture** and **Songs** — and a single overlay on your stream. Type a reference or pick a song slide, press **Show**, and it appears. No servers, no subscriptions, no setup beyond copying a folder.
+A free, open-source tool for OBS Studio. You get a control panel docked inside OBS with tabs for your **Plan**, **Scripture** and **Songs** — and a single overlay on your stream. Type a reference or pick a song slide, press **Show**, and it appears. No servers, no subscriptions, no setup beyond copying a folder.
 
 This replaces the separate Bible Verse and Lyric Display plugins. One dock, one browser source, one set of display settings, so verses and lyrics always look like they belong to the same service.
 
@@ -57,7 +57,16 @@ That's it. One browser source handles both verses and lyrics.
 
 ## Using it during a service
 
-The dock has a **live bar** pinned at the top of every tab: what is loaded, **Show**, **Hide** and previous / next. Under it are three tabs: **Scripture**, **Songs** and **Style**.
+The dock has a **live bar** pinned at the top of every tab: what is loaded, **Show**, **Hide** and previous / next. Under it are four tabs: **Plan**, **Scripture**, **Songs** and **Style**.
+
+### Plan tab
+
+Build the order of service ahead of time, or as you go. A plan is a named list of songs and Bible readings.
+
+- **Add things** with **+ Song** and **+ Verse**. They open Songs or Scripture so you can pick; hold Shift to add several before going back. Or press **+ Plan** on a song or verse you already have open.
+- **Next item** (or `PageDown`) loads the next song or reading into the live bar so you can check it. It does not go on screen until you press **Show**. The arrow keys still step through the slides of the current item and never change which item is current. `PageUp` goes back, and tapping a row jumps to it.
+- **Change it live.** New items go in right after the current one. Drag the grip on a row, or open its **⋯** menu for Move up, Move down and Remove. Removing the item that is on screen does not take it off the screen.
+- **Plans are files.** With a library folder chosen, each plan is saved as its own `.json` file in a `plans` folder inside it. Rename, duplicate and delete are in the **Plan** menu; pick another plan from the list. Plans point to songs, so editing a song updates every plan that uses it. A song that was removed from the library shows as "Song missing" and is skipped.
 
 ### Scripture tab
 
@@ -94,6 +103,7 @@ Saved settings from earlier versions are converted automatically: Dark Stage, Cl
 | Left / Right arrow | Previous / next verse or slide |
 | `Space` | Show / hide |
 | `Esc` | Hide |
+| PageDown / PageUp | Next / previous item in the plan |
 
 Settings are shared deliberately: theme, position, font, size, opacity, scale and background carry across both tabs so scripture and lyrics match on screen.
 
@@ -112,6 +122,8 @@ One deliberate behaviour worth knowing: if a song is live and you switch to the 
 **Sacred Light shows a plain card.** It needs `dist/assets/bg1.png`. Check the file is still there.
 
 **Songs disappeared.** If the dock shows a yellow banner, songs are only in this browser: choose a library folder so they are kept as files. If it shows a red banner, OBS lost access to the folder; click **Reconnect**. Use **Export all as JSON** in Library tools now and then for a backup copy.
+
+**A plan is missing or shows "Unreadable plan file".** Plans live in the `plans` folder inside your library folder. A file there that is not a plan (or comes from a newer version) is listed but never changed or deleted. If the yellow or red banner shows on the Plan tab, plans are only in this browser until you choose or reconnect the library folder.
 
 **Something is not working and the message is unclear.** Open **Diagnostics** at the bottom of the Style tab and read the last few lines; it lists recent errors with the time.
 

@@ -1,9 +1,9 @@
-export function memoryStorage(initial = {}) {
-  const map = new Map(Object.entries(initial));
+export const memoryStorage = (seed = {}) => {
+  const map = new Map(Object.entries(seed));
   return {
-    getItem: (key) => (map.has(key) ? map.get(key) : null),
-    setItem: (key, value) => { map.set(key, String(value)); },
-    removeItem: (key) => { map.delete(key); },
-    dump: () => Object.fromEntries(map),
+    map,
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => { map.set(k, String(v)); },
+    removeItem: (k) => { map.delete(k); },
   };
-}
+};

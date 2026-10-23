@@ -15,6 +15,8 @@ test('dock loads over file:// with no page errors', async ({ page }) => {
 
 test('tabs switch panels and keep aria-selected in step', async ({ page }) => {
   await page.goto('/dock.html');
+  await expect(page.locator('#panel-plan')).toBeVisible();
+  await page.click('#tab-scripture');
   await expect(page.locator('#panel-scripture')).toBeVisible();
   await page.click('#tab-songs');
   await expect(page.locator('#panel-songs')).toBeVisible();
