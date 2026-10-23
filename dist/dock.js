@@ -391,7 +391,7 @@
   var PHASE_LABEL = { off: "OFF", live: "LIVE", hidden: "HIDDEN" };
   var EMPTY_PREVIEW = { has: false, text: "Nothing loaded", sub: "Look up a verse or pick a slide", canNav: false };
   function initLiveBar({ session, tabs, setStatus }) {
-    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
+    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
     const activeTab = () => tabs[session.activeTab] || null;
     function liveLabel() {
       if (session.phase !== "live") return "";
@@ -407,6 +407,9 @@
       what.textContent = liveLabel();
       previewText.textContent = p.text;
       previewSub.textContent = p.sub;
+      const planText = tabs.plan ? tabs.plan.summary() : null;
+      planLine.textContent = planText || "";
+      planLine.classList.toggle("hidden", !planText);
       btnShow.disabled = !p.has;
       btnHide.disabled = !session.isLive;
       btnPrev.disabled = !p.canNav;
@@ -443,6 +446,12 @@
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
         step(-1);
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        if (tabs.plan) tabs.plan.nextItem();
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        if (tabs.plan) tabs.plan.prevItem();
       } else if (e.key === " ") {
         e.preventDefault();
         if (session.isLive) btnHide.click();
@@ -1151,18 +1160,32 @@
       refresh();
       setStatus(result.reference, "success");
     }
-    async function lookup(reference) {
-      if (busy) return;
+    async function lookup(reference, { autoShow = autoShowCb.checked } = {}) {
+      if (busy) return null;
       busy = true;
       setStatus("Looking up " + reference + "...", "loading");
       const result = await scripture.fetchVerse(reference, translation());
       busy = false;
       if (result.error) {
         setStatus(result.error, "error");
-        return;
+        return false;
       }
       apply(result);
-      if (autoShowCb.checked) session.show();
+      if (autoShow) session.show();
+      return true;
+    }
+    async function loadReading(reference, translationKey) {
+      if (busy) {
+        setStatus("Still loading a verse, try again in a moment.", "");
+        return null;
+      }
+      const entry = TRANSLATIONS.find((t) => t.key === translationKey);
+      if (entry && entry.key !== translation()) {
+        languageSel.value = entry.lang;
+        fillTranslations(entry.key);
+        store.update({ language: languageSel.value, translation: translation() });
+      }
+      return lookup(reference, { autoShow: false });
     }
     async function step(dir) {
       if (!plainRef || busy) return;
@@ -1257,6 +1280,7 @@
         };
       },
       step,
+      loadReading,
       focus: () => smart.focus()
     };
   }
@@ -1668,9 +1692,10 @@
       btnDelete.disabled = !song;
       refresh();
     }
-    function open(id) {
+    function open(id, { preview = false } = {}) {
       activeSongId = id;
-      activeSlideIdx = null;
+      const song = getSong();
+      activeSlideIdx = preview && song && song.slides.length ? 0 : null;
       shownIdx = -1;
       editing = false;
       listOpen = false;
@@ -1837,6 +1862,19 @@
           sub: song ? song.title + " \xB7 " + where : "Pick a song and a slide",
           canNav: !!(song && song.slides.length)
         };
+      },
+      /** Open a song with slide 1 previewed, not shown. False when unsaved editor text would be lost or the song is gone. */
+      loadSong(id) {
+        if (editing && hasUnsavedEdits()) return false;
+        if (!library.get(id)) return false;
+        open(id, { preview: true });
+        return true;
+      },
+      /** Which song and slide is loaded, for the plan's "slide 2/4" label. */
+      position() {
+        const song = getSong();
+        if (!song) return null;
+        return { songId: song.id, index: shownIdx >= 0 ? shownIdx : activeSlideIdx, count: song.slides.length };
       },
       step,
       markShown() {
@@ -2729,6 +2767,12 @@ ${DELIMITER}
     }
     return null;
   }
+  function prevLoadable(plan, currentId, library) {
+    for (let i = indexOfItem(plan, currentId) - 1; i >= 0; i -= 1) {
+      if (itemStatus(plan.items[i], library) === "ok") return plan.items[i];
+    }
+    return null;
+  }
   function planSummary(plan, currentId, library) {
     const total = plan.items.length;
     if (!total) return null;
@@ -2751,11 +2795,12 @@ ${DELIMITER}
     return el;
   }
   function initPlanTab({ session, store, library, tabs, setStatus, showView, refresh, report: report2 }) {
-    const select = $("plan-select"), listEl = $("plan-list"), banner = $("plan-banner"), unreadableEl = $("plan-unreadable"), btnMenu = $("btn-plan-menu"), menu = $("plan-menu"), picker = $("picker-banner"), pickerText = $("picker-text");
+    const select = $("plan-select"), listEl = $("plan-list"), banner = $("plan-banner"), unreadableEl = $("plan-unreadable"), btnMenu = $("btn-plan-menu"), menu = $("plan-menu"), picker = $("picker-banner"), pickerText = $("picker-text"), btnNext = $("btn-next-item");
     let plan = store.get(store.lastId()) || store.list()[0] || createPlan();
     let currentId = null;
     let picking = null;
     let queue = Promise.resolve();
+    let loading = false;
     const enqueue = (job) => {
       queue = queue.then(job).catch(report2);
       return queue;
@@ -2797,6 +2842,11 @@ ${DELIMITER}
     function statusText(item, index, currentIndex) {
       const status = itemStatus(item, library);
       if (status !== "ok") return status;
+      if (item.id === currentId) {
+        const pos = item.type === "song" && tabs.songs ? tabs.songs.position() : null;
+        if (pos && pos.songId === item.songId && pos.index !== null) return "slide " + (pos.index + 1) + "/" + pos.count;
+        return "loaded";
+      }
       if (index < currentIndex) return "done";
       if (item.type === "song") {
         const count = library.get(item.songId).slides.length;
@@ -2811,10 +2861,17 @@ ${DELIMITER}
       const grip = make("span", "plan-grip", "\u2261");
       grip.setAttribute("aria-hidden", "true");
       const icon = make("span", "plan-icon", TYPE_ICON[item.type] || "?");
-      const title = make("span", "plan-title", itemTitle(item, library));
+      const title = make("button", "plan-title", itemTitle(item, library));
+      title.type = "button";
+      title.addEventListener("click", () => loadItem(item));
       const state = make("span", "plan-status", statusText(item, index, currentIndex));
       li.append(grip, icon, title, state);
       return li;
+    }
+    function renderNext() {
+      const next = nextLoadable(plan, currentId, library);
+      btnNext.disabled = !next;
+      btnNext.textContent = !plan.items.length || next ? "Next item \xBB" : "End of plan";
     }
     function renderRows() {
       if (!plan.items.length) {
@@ -2828,7 +2885,53 @@ ${DELIMITER}
       renderSelect();
       renderBanner();
       renderRows();
+      renderNext();
       refresh();
+    }
+    async function loadItem(item) {
+      if (loading) {
+        setStatus("Still loading, try again in a moment.", "");
+        return;
+      }
+      const status = itemStatus(item, library);
+      if (status !== "ok") {
+        setStatus(status === "missing" ? "That song is no longer in the library." : "This kind of item cannot be loaded yet.", "error");
+        return;
+      }
+      loading = true;
+      try {
+        if (item.type === "song") {
+          if (!tabs.songs.loadSong(item.songId)) {
+            setStatus("Finish or discard the song you are editing first.", "error");
+            return;
+          }
+          session.setTab("songs");
+        } else {
+          const ok = await tabs.scripture.loadReading(item.ref, item.translation);
+          if (ok === null) return;
+          if (ok) session.setTab("scripture");
+        }
+        currentId = item.id;
+        render();
+      } finally {
+        loading = false;
+      }
+    }
+    async function nextItem() {
+      const next = nextLoadable(plan, currentId, library);
+      if (!next) {
+        setStatus("End of the plan.", "");
+        return;
+      }
+      await loadItem(next);
+    }
+    async function prevItem() {
+      const prev = prevLoadable(plan, currentId, library);
+      if (!prev) {
+        setStatus("Start of the plan.", "");
+        return;
+      }
+      await loadItem(prev);
     }
     function finishAdd(keepOpen, label) {
       setStatus("Added " + label + " to " + plan.name + ".", "success");
@@ -2910,6 +3013,7 @@ ${DELIMITER}
       select.blur();
       if (chosen) openPlan(chosen);
     });
+    btnNext.addEventListener("click", nextItem);
     $("btn-plan-add-song").addEventListener("click", () => startPicking("songs"));
     $("btn-plan-add-verse").addEventListener("click", () => startPicking("scripture"));
     $("picker-back").addEventListener("click", () => showView("plan"));
@@ -2932,6 +3036,8 @@ ${DELIMITER}
       onView,
       addSong,
       addReading,
+      nextItem,
+      prevItem,
       summary: () => planSummary(plan, currentId, library)
     };
   }

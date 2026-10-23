@@ -148,9 +148,10 @@ export function initSongsTab({ session, library, setStatus, refresh, addToPlan }
     refresh();
   }
 
-  function open(id) {
+  function open(id, { preview = false } = {}) {
     activeSongId = id;
-    activeSlideIdx = null;
+    const song = getSong();
+    activeSlideIdx = preview && song && song.slides.length ? 0 : null;
     shownIdx = -1;
     editing = false;
     listOpen = false;
@@ -311,6 +312,19 @@ export function initSongsTab({ session, library, setStatus, refresh, addToPlan }
         sub: song ? song.title + ' \u00b7 ' + where : 'Pick a song and a slide',
         canNav: !!(song && song.slides.length),
       };
+    },
+    /** Open a song with slide 1 previewed, not shown. False when unsaved editor text would be lost or the song is gone. */
+    loadSong(id) {
+      if (editing && hasUnsavedEdits()) return false;
+      if (!library.get(id)) return false;
+      open(id, { preview: true });
+      return true;
+    },
+    /** Which song and slide is loaded, for the plan's "slide 2/4" label. */
+    position() {
+      const song = getSong();
+      if (!song) return null;
+      return { songId: song.id, index: shownIdx >= 0 ? shownIdx : activeSlideIdx, count: song.slides.length };
     },
     step,
     markShown() { shownIdx = activeSlideIdx === null ? -1 : activeSlideIdx; },

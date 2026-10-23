@@ -49,15 +49,29 @@ export function initScriptureTab({ session, scripture, store, setStatus, refresh
     setStatus(result.reference, 'success');
   }
 
-  async function lookup(reference) {
-    if (busy) return;
+  /** True when the verse loaded, false when the lookup failed, null when another lookup was still running. */
+  async function lookup(reference, { autoShow = autoShowCb.checked } = {}) {
+    if (busy) return null;
     busy = true;
     setStatus('Looking up ' + reference + '...', 'loading');
     const result = await scripture.fetchVerse(reference, translation());
     busy = false;
-    if (result.error) { setStatus(result.error, 'error'); return; }
+    if (result.error) { setStatus(result.error, 'error'); return false; }
     apply(result);
-    if (autoShowCb.checked) session.show();
+    if (autoShow) session.show();
+    return true;
+  }
+
+  /** Put a plan reading in the tab, in the translation it was planned with, without showing it. */
+  async function loadReading(reference, translationKey) {
+    if (busy) { setStatus('Still loading a verse, try again in a moment.', ''); return null; }
+    const entry = TRANSLATIONS.find((t) => t.key === translationKey);
+    if (entry && entry.key !== translation()) {
+      languageSel.value = entry.lang;
+      fillTranslations(entry.key);
+      store.update({ language: languageSel.value, translation: translation() });
+    }
+    return lookup(reference, { autoShow: false });
   }
 
   async function step(dir) {
@@ -133,6 +147,7 @@ export function initScriptureTab({ session, scripture, store, setStatus, refresh
       };
     },
     step,
+    loadReading,
     focus: () => smart.focus(),
   };
 }

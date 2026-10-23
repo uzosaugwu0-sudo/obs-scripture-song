@@ -9,7 +9,7 @@ const EMPTY_PREVIEW = { has: false, text: 'Nothing loaded', sub: 'Look up a vers
  */
 export function initLiveBar({ session, tabs, setStatus }) {
   const bar = $('live-bar'), pill = $('status-pill'), what = $('status-what'),
-        previewText = $('preview-text'), previewSub = $('preview-sub'),
+        previewText = $('preview-text'), previewSub = $('preview-sub'), planLine = $('plan-line'),
         btnPrev = $('btn-prev'), btnShow = $('btn-show'), btnHide = $('btn-hide'),
         btnNext = $('btn-next'), btnClear = $('btn-clear');
 
@@ -30,6 +30,9 @@ export function initLiveBar({ session, tabs, setStatus }) {
     what.textContent = liveLabel();
     previewText.textContent = p.text;
     previewSub.textContent = p.sub;
+    const planText = tabs.plan ? tabs.plan.summary() : null;
+    planLine.textContent = planText || '';
+    planLine.classList.toggle('hidden', !planText);
     btnShow.disabled = !p.has;
     btnHide.disabled = !session.isLive;
     btnPrev.disabled = !p.canNav;
@@ -65,6 +68,8 @@ export function initLiveBar({ session, tabs, setStatus }) {
     if (e.key === 'Escape') btnHide.click();
     else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
+    else if (e.key === 'PageDown') { e.preventDefault(); if (tabs.plan) tabs.plan.nextItem(); }
+    else if (e.key === 'PageUp') { e.preventDefault(); if (tabs.plan) tabs.plan.prevItem(); }
     else if (e.key === ' ') { e.preventDefault(); if (session.isLive) btnHide.click(); else btnShow.click(); }
   });
 

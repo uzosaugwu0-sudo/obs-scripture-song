@@ -151,3 +151,130 @@ test.describe('plan tab: building a plan', () => {
     expect(saved.items[0]).toMatchObject({ type: 'song' });
   });
 });
+
+async function runningPlan(context) {
+  await blockBibleApi(context);
+  const { dock, overlay } = await openPair(context);
+  await addSongToPlan(dock, 'Amazing Grace', ['Amazing grace', 'How sweet the sound']);
+  await addVerseToPlan(dock, 'John 3:16');
+  await dock.click('#tab-plan');
+  return { dock, overlay };
+}
+
+const currentTitle = (dock) => dock.locator('.plan-item.cur .plan-title');
+
+test.describe('plan tab: running a plan', () => {
+  test('an empty plan shows no plan line and Next item is disabled', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await expect(dock.locator('#plan-line')).toBeHidden();
+    await expect(dock.locator('#btn-next-item')).toBeDisabled();
+  });
+
+  test('Next item loads the first item into the live bar without putting it on air', async ({ context }) => {
+    const { dock, overlay } = await runningPlan(context);
+    await dock.click('#btn-next-item');
+    await expect(currentTitle(dock)).toHaveText('Amazing Grace');
+    await expect(dock.locator('#preview-text')).toHaveText('Amazing grace');
+    await expect(dock.locator('#status-pill')).toHaveText('OFF');
+    await expect(overlay.locator('#stage.hidden')).toHaveCount(1);
+    await expect(dock.locator('#plan-line')).toContainText('1 of 2');
+    await expect(dock.locator('#plan-line')).toContainText('Next: John 3:16');
+  });
+
+  test('arrows step slides and never change the current item', async ({ context }) => {
+    const { dock, overlay } = await runningPlan(context);
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#ov-body')).toContainText('Amazing grace');
+    await dock.keyboard.press('ArrowRight');
+    await expect(overlay.locator('#ov-body')).toContainText('How sweet the sound');
+    await expect(currentTitle(dock)).toHaveText('Amazing Grace');
+    await expect(dock.locator('.plan-item.cur .plan-status')).toHaveText('slide 2/2');
+  });
+
+  test('Next item while live keeps the old slide on air until Show', async ({ context }) => {
+    const { dock, overlay } = await runningPlan(context);
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await dock.keyboard.press('ArrowRight');
+    await expect(overlay.locator('#ov-body')).toContainText('How sweet the sound');
+    await dock.click('#btn-next-item');
+    await expect(dock.locator('#preview-sub')).toContainText('John 3:16');
+    await expect(overlay.locator('#ov-body')).toContainText('How sweet the sound');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#ov-body')).toContainText('God so loved');
+    await expect(dock.locator('#btn-next-item')).toHaveText('End of plan');
+    await expect(dock.locator('#btn-next-item')).toBeDisabled();
+  });
+
+  test('PageDown and PageUp move between items', async ({ context }) => {
+    const { dock } = await runningPlan(context);
+    await dock.keyboard.press('PageDown');
+    await expect(currentTitle(dock)).toHaveText('Amazing Grace');
+    await dock.keyboard.press('PageDown');
+    await expect(currentTitle(dock)).toContainText('John 3:16');
+    await dock.keyboard.press('PageUp');
+    await expect(currentTitle(dock)).toHaveText('Amazing Grace');
+  });
+
+  test('tapping a row jumps straight to it', async ({ context }) => {
+    const { dock } = await runningPlan(context);
+    await dock.locator('.plan-item').nth(1).locator('.plan-title').click();
+    await expect(currentTitle(dock)).toContainText('John 3:16');
+    await expect(dock.locator('#preview-text')).toContainText('God so loved');
+  });
+
+  test('a reading loads in the translation it was planned with', async ({ context }) => {
+    const { dock } = await runningPlan(context);
+    await dock.click('#tab-scripture');
+    await dock.selectOption('#translation-sel', 'WEB');
+    await expect(dock.locator('#status-bar')).toContainText('WEB');
+    await dock.click('#tab-plan');
+    await dock.locator('.plan-item').nth(1).locator('.plan-title').click();
+    await expect(dock.locator('#translation-sel')).toHaveValue('KJV');
+  });
+
+  test('Next item skips a song that was deleted from the library', async ({ context }) => {
+    await blockBibleApi(context);
+    const { dock } = await openPair(context);
+    await addSongToPlan(dock, 'Song A', ['a']);
+    await addSongToPlan(dock, 'Song B', ['b']);
+    await dock.click('#btn-all-songs');
+    dock.once('dialog', (d) => d.accept());
+    await dock.locator('#song-list .song-item', { hasText: 'Song B' }).locator('.del').click();
+    await addVerseToPlan(dock, 'John 3:16');
+    await dock.click('#tab-plan');
+    await dock.click('#btn-next-item');
+    await expect(currentTitle(dock)).toHaveText('Song A');
+    await dock.click('#btn-next-item');
+    await expect(currentTitle(dock)).toContainText('John 3:16');
+  });
+
+  test('Next item refuses while the song editor holds unsaved text', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await addSongToPlan(dock, 'Amazing Grace', ['Amazing grace']);
+    await dock.click('#btn-edit-song');
+    await dock.fill('#slide-textarea', 'words I have not saved');
+    await dock.click('#tab-plan');
+    await dock.click('#btn-next-item');
+    await expect(dock.locator('#status-bar')).toContainText('Finish or discard');
+    await expect(dock.locator('.plan-item.cur')).toHaveCount(0);
+    await dock.click('#tab-songs');
+    await expect(dock.locator('#slide-textarea')).toHaveValue('words I have not saved');
+  });
+
+  test('two Next item presses in the same instant load one item, not two', async ({ context }) => {
+    await blockBibleApi(context);
+    const { dock } = await openPair(context);
+    await addVerseToPlan(dock, 'John 3:16');
+    await addVerseToPlan(dock, 'Romans 8:28');
+    await dock.click('#tab-plan');
+    await dock.evaluate(() => {
+      const button = document.getElementById('btn-next-item');
+      button.click();
+      button.click();
+    });
+    await expect(dock.locator('.plan-item.cur')).toHaveCount(1);
+    await expect(currentTitle(dock)).toContainText('John 3:16');
+  });
+});
