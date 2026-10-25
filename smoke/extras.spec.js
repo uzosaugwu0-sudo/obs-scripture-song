@@ -197,3 +197,116 @@ test.describe('layout', () => {
     expect(await sideways()).toBe(false);
   });
 });
+
+async function showTimerNow(dock, { title = 'Back in', minutes = '5', seconds = '0' } = {}) {
+  await openEditor(dock, 'timer');
+  await fillDuration(dock, { title, minutes, seconds });
+  await dock.click('#ed-show');
+}
+
+test.describe('timer controls while on air', () => {
+  test('the dock shows the live time, counting, with its title', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await showTimerNow(dock);
+    await expect(dock.locator('#timer-controls')).toBeVisible();
+    await expect(dock.locator('#timer-live-text')).toContainText('Back in');
+    await expect(dock.locator('#timer-live-text')).toContainText(/(5:00|4:5\d)/);
+    const first = await dock.locator('#timer-live-text').textContent();
+    await expect.poll(async () => dock.locator('#timer-live-text').textContent(), { timeout: 4000 }).not.toBe(first);
+  });
+
+  test('Pause freezes the overlay clock and Resume continues it', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await showTimerNow(dock);
+    await expect(bodyOf(overlay)).toHaveText(/^(5:00|4:5\d)$/);
+    await dock.click('#btn-timer-pause');
+    await expect(dock.locator('#btn-timer-pause')).toHaveText('Resume');
+    await expect(dock.locator('#timer-live-text')).toContainText('(paused)');
+    await dock.waitForTimeout(500);
+    const frozen = await bodyOf(overlay).textContent();
+    await dock.waitForTimeout(1600);
+    expect(await bodyOf(overlay).textContent()).toBe(frozen);
+    await dock.click('#btn-timer-pause');
+    await expect(dock.locator('#btn-timer-pause')).toHaveText('Pause');
+    await expect.poll(async () => bodyOf(overlay).textContent(), { timeout: 4000 }).not.toBe(frozen);
+  });
+
+  test('Reset restarts from the full time', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await showTimerNow(dock);
+    await dock.waitForTimeout(2300);
+    await expect(bodyOf(overlay)).toHaveText(/^4:5[0-7]$/);
+    await dock.click('#btn-timer-reset');
+    await expect(bodyOf(overlay)).toHaveText(/^(5:00|4:59)$/);
+  });
+
+  test('pressing Show again restarts a duration timer', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await showTimerNow(dock);
+    await dock.waitForTimeout(2300);
+    await expect(bodyOf(overlay)).toHaveText(/^4:5[0-7]$/);
+    await dock.click('#btn-show');
+    await expect.poll(async () => bodyOf(overlay).textContent(), { timeout: 3000 }).toMatch(/^(5:00|4:59)$/);
+  });
+
+  test('an expired duration timer stays at 0:00 until Hide, then the controls go away', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await showTimerNow(dock, { minutes: '0', seconds: '2' });
+    await dock.waitForTimeout(3000);
+    await expect(bodyOf(overlay)).toHaveText('0:00');
+    await expect(overlay.locator('#stage.hidden')).toHaveCount(0);
+    await expect(dock.locator('#timer-live-text')).toContainText('0:00');
+    await dock.click('#btn-hide');
+    await expect(overlay.locator('#stage.hidden')).toHaveCount(1);
+    await expect(dock.locator('#timer-controls')).toBeHidden();
+  });
+
+  test('a clock-time timer shows its digits but has no Pause or Reset', async ({ context }) => {
+    test.skip(nearMidnight(), 'the target time would fall on tomorrow');
+    const { dock } = await openPair(context);
+    const target = new Date(Date.now() + 5 * 60_000);
+    const at = String(target.getHours()).padStart(2, '0') + ':' + String(target.getMinutes()).padStart(2, '0');
+    await openEditor(dock, 'timer');
+    await dock.click('#ed-mode button[data-value="clock"]');
+    await dock.fill('#ed-clock', at);
+    await dock.click('#ed-show');
+    await expect(dock.locator('#timer-controls')).toBeVisible();
+    await expect(dock.locator('#timer-live-text')).toContainText(/[3-5]:\d\d/);
+    await expect(dock.locator('#btn-timer-pause')).toBeHidden();
+    await expect(dock.locator('#btn-timer-reset')).toBeHidden();
+  });
+
+  test('Next item while a timer is on air leaves the live clock alone, and Pause still pauses the live one', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await openEditor(dock, 'timer');
+    await fillDuration(dock, { title: 'Live clock', minutes: '5', seconds: '0' });
+    await dock.click('#ed-add');
+    await openEditor(dock, 'announcement');
+    await fillAnnouncement(dock, { title: 'Later', text: 'Coming up next' });
+    await dock.click('#ed-add');
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#ov-title')).toHaveText('Live clock');
+    await dock.click('#btn-next-item');
+    await expect(dock.locator('#preview-text')).toHaveText('Coming up next');
+    await expect(overlay.locator('#ov-title')).toHaveText('Live clock');
+    await expect(dock.locator('#timer-controls')).toBeVisible();
+    await dock.click('#btn-timer-pause');
+    await expect(dock.locator('#btn-timer-pause')).toHaveText('Resume');
+    await expect(overlay.locator('#ov-title')).toHaveText('Live clock');
+    await expect(bodyOf(overlay)).toHaveText(/^\d:\d\d$/);
+    await expect(bodyOf(overlay)).not.toHaveText('Coming up next');
+  });
+
+  test('a style change keeps the clock running instead of restarting or swapping it', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await showTimerNow(dock);
+    await dock.waitForTimeout(2300);
+    await expect(bodyOf(overlay)).toHaveText(/^4:5[0-7]$/);
+    await dock.click('#tab-style');
+    await dock.click('#position-seg button[data-value="top"]');
+    await expect(overlay.locator('#stage.pos-top')).toHaveCount(1);
+    await expect(bodyOf(overlay)).toHaveText(/^4:5[0-6]$/);
+    await expect(overlay.locator('#ov-title')).toHaveText('Back in');
+  });
+});

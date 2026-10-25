@@ -429,7 +429,7 @@
     timer: "Timer is running."
   };
   function initLiveBar({ session, tabs, setStatus }) {
-    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
+    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear"), timerControls = $("timer-controls"), timerText = $("timer-live-text"), btnTimerPause = $("btn-timer-pause"), btnTimerReset = $("btn-timer-reset");
     const activeTab = () => tabs[session.activeTab] || null;
     function liveLabel() {
       if (session.phase !== "live") return "";
@@ -453,6 +453,14 @@
       const planText = tabs.plan ? tabs.plan.summary() : null;
       planLine.textContent = planText || "";
       planLine.classList.toggle("hidden", !planText);
+      const live = tabs.timer ? tabs.timer.live() : null;
+      timerControls.classList.toggle("hidden", !live);
+      if (live) {
+        timerText.textContent = live.text + (live.paused ? " (paused)" : "") + (live.title ? " \xB7 " + live.title : "");
+        btnTimerPause.textContent = live.paused ? "Resume" : "Pause";
+        btnTimerPause.classList.toggle("hidden", !live.canControl);
+        btnTimerReset.classList.toggle("hidden", !live.canControl);
+      }
       btnShow.disabled = !p.has;
       btnHide.disabled = !session.isLive;
       btnPrev.disabled = !p.canNav;
@@ -479,6 +487,13 @@
     });
     btnPrev.addEventListener("click", () => step(-1));
     btnNext.addEventListener("click", () => step(1));
+    btnTimerPause.addEventListener("click", () => {
+      const live = tabs.timer.live();
+      if (!live) return;
+      if (live.paused) tabs.timer.resume();
+      else tabs.timer.pause();
+    });
+    btnTimerReset.addEventListener("click", () => tabs.timer.reset());
     document.addEventListener("keydown", (e) => {
       const tag = document.activeElement ? document.activeElement.tagName : "";
       if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
