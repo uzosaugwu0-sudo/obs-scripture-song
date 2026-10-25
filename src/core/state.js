@@ -1,6 +1,6 @@
 export const STATE_VERSION = 1;
 export const ACTIONS = Object.freeze(['show', 'hide', 'clear']);
-export const KINDS = Object.freeze(['verse', 'song']);
+export const KINDS = Object.freeze(['verse', 'song', 'announcement', 'timer']);
 export const THEMES = Object.freeze(['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom']);
 export const ANIMATIONS = Object.freeze(['rise', 'wipe', 'lines', 'cut']);
 
@@ -10,6 +10,7 @@ export const DEFAULTS = Object.freeze({
   title:         '',        // song title
   body:          '',        // verse text or slide lines
   reference:     '',        // scripture reference
+  timer:         null,      // timer kind only: { endAt } while running, { remainingMs } while paused
   theme:         'frosted',
   position:      'bottom',
   fontSize:      'md',
@@ -47,6 +48,12 @@ export function nextSeq(lastSeq, nowMs) {
   return Math.max(lastSeq + 1, nowMs);
 }
 
+function validTimer(timer) {
+  if (!timer || typeof timer !== 'object') return false;
+  if (typeof timer.endAt === 'number') return Number.isFinite(timer.endAt);
+  return typeof timer.remainingMs === 'number' && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0;
+}
+
 /**
  * Turn anything that arrives over a transport into a usable state, or null.
  * The overlay ignores null, so hostile or newer-than-us payloads render nothing.
@@ -61,5 +68,6 @@ export function normalizeState(raw) {
   };
   if (!ACTIONS.includes(merged.action)) return null;
   if (!KINDS.includes(merged.kind)) return null;
+  if (merged.kind === 'timer' && merged.action !== 'clear' && !validTimer(merged.timer)) return null;
   return { ...merged, ...migrateLegacy(merged) };
 }

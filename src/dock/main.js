@@ -18,6 +18,7 @@ import { initStyleTab } from './style-tab.js';
 import { createPlanStore } from '../plan/store.js';
 import { createLocalPlanStore } from '../plan/local-store.js';
 import { initPlanTab } from './plan-tab.js';
+import { initExtrasTab } from './extras-tab.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
@@ -55,6 +56,8 @@ function wireDiagnosticsPanel() {
       providers: {
         scripture: () => (tabs.scripture ? tabs.scripture.getContent() : EMPTY_SCRIPTURE),
         songs: () => (tabs.songs ? tabs.songs.getContent() : EMPTY_SONG),
+        announcement: () => (tabs.announcement ? tabs.announcement.getContent() : EMPTY_SONG),
+        timer: () => (tabs.timer ? tabs.timer.getContent() : { ...EMPTY_SONG, timer: { remainingMs: 0 } }),
       },
       onChange: () => {
         if (liveBar) liveBar.refresh();
@@ -77,6 +80,9 @@ function wireDiagnosticsPanel() {
     }
 
     liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
+    const extras = initExtrasTab({ session, refresh: () => liveBar.refresh() });
+    tabs.announcement = extras.announcement;
+    tabs.timer = extras.timer;
     const scripture = createScriptureApi({
       cache: idbCache(openKv('obs-stage-cache'), report('cache')),
       offline: createOfflineProvider(),

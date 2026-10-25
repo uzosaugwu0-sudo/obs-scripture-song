@@ -26,14 +26,16 @@
   }
 
   // src/dock/session.js
-  var TABS = ["scripture", "songs"];
+  var KIND_OF = { scripture: "verse", songs: "song", announcement: "announcement", timer: "timer" };
+  var TABS = Object.keys(KIND_OF);
   function createSession({ transport, readSettings, providers, onChange = () => {
   } }) {
     const s = { activeTab: "scripture", isLive: false, liveTab: null, phase: "off", liveContent: null };
     const snapshot = () => ({ activeTab: s.activeTab, isLive: s.isLive, liveTab: s.liveTab, phase: s.phase });
     const notify = () => onChange(snapshot());
     function content(tab) {
-      return tab === "scripture" ? { kind: "verse", title: "", ...providers.scripture() } : { kind: "song", reference: "", ...providers.songs() };
+      const provided = providers[tab] ? providers[tab]() : {};
+      return { kind: KIND_OF[tab], title: "", reference: "", body: "", ...provided };
     }
     function buildState(action, { forShow = false, fresh = false } = {}) {
       const live = action === "show" && s.isLive && s.liveTab && !forShow;
@@ -54,6 +56,9 @@
       get phase() {
         return s.phase;
       },
+      get liveContent() {
+        return s.liveContent;
+      },
       buildState,
       setTab(tab) {
         if (!TABS.includes(tab)) return;
@@ -63,7 +68,7 @@
       show() {
         const state = buildState("show", { forShow: true });
         transport.send(state);
-        s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body };
+        s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body, timer: state.timer };
         s.liveTab = s.activeTab;
         s.isLive = true;
         s.phase = "live";
@@ -86,6 +91,13 @@
       /** Re-send what is on air with the current style. fresh: true re-reads the content too (an edit to the live slide). */
       resendIfLive({ fresh = false } = {}) {
         if (s.isLive) transport.send(buildState("show", { fresh }));
+      },
+      /** Change part of what is on air (a paused or reset timer) and send it. Does nothing unless something is live. */
+      updateLive(patch) {
+        if (!s.isLive || !s.liveContent) return;
+        s.liveContent = { ...s.liveContent, ...patch };
+        transport.send({ ...readSettings(), action: "show", visible: true, ...s.liveContent });
+        notify();
       }
     };
   }
@@ -116,7 +128,7 @@
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
-  var KINDS = Object.freeze(["verse", "song"]);
+  var KINDS = Object.freeze(["verse", "song", "announcement", "timer"]);
   var THEMES = Object.freeze(["frosted", "frosted-light", "pure", "sacred-light", "custom"]);
   var ANIMATIONS = Object.freeze(["rise", "wipe", "lines", "cut"]);
   var DEFAULTS = Object.freeze({
@@ -129,6 +141,8 @@
     // verse text or slide lines
     reference: "",
     // scripture reference
+    timer: null,
+    // timer kind only: { endAt } while running, { remainingMs } while paused
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -162,6 +176,11 @@
   function nextSeq(lastSeq, nowMs) {
     return Math.max(lastSeq + 1, nowMs);
   }
+  function validTimer(timer) {
+    if (!timer || typeof timer !== "object") return false;
+    if (typeof timer.endAt === "number") return Number.isFinite(timer.endAt);
+    return typeof timer.remainingMs === "number" && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0;
+  }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
     if (typeof raw.version === "number" && raw.version > STATE_VERSION) return null;
@@ -172,6 +191,7 @@
     };
     if (!ACTIONS.includes(merged.action)) return null;
     if (!KINDS.includes(merged.kind)) return null;
+    if (merged.kind === "timer" && merged.action !== "clear" && !validTimer(merged.timer)) return null;
     return { ...merged, ...migrateLegacy(merged) };
   }
 
@@ -396,12 +416,29 @@
   // src/dock/live-bar.js
   var PHASE_LABEL = { off: "OFF", live: "LIVE", hidden: "HIDDEN" };
   var EMPTY_PREVIEW = { has: false, text: "Nothing loaded", sub: "Look up a verse or pick a slide", canNav: false };
+  var NEEDS = {
+    scripture: "Look up a verse first.",
+    songs: "No slide text to display.",
+    announcement: "Write the announcement first.",
+    timer: "Set up the timer first."
+  };
+  var LIVE_MSG = {
+    scripture: "Verse is live.",
+    songs: "Slide is live.",
+    announcement: "Announcement is live.",
+    timer: "Timer is running."
+  };
   function initLiveBar({ session, tabs, setStatus }) {
-    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
+    const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear"), timerControls = $("timer-controls"), timerText = $("timer-live-text"), btnTimerPause = $("btn-timer-pause"), btnTimerReset = $("btn-timer-reset");
     const activeTab = () => tabs[session.activeTab] || null;
     function liveLabel() {
       if (session.phase !== "live") return "";
       if (session.liveTab === "scripture") return "Verse";
+      if (session.liveTab === "announcement" || session.liveTab === "timer") {
+        const name = session.liveTab === "timer" ? "Timer" : "Announcement";
+        const title2 = session.liveContent ? session.liveContent.title : "";
+        return title2 ? name + " \xB7 " + title2 : name;
+      }
       const title = tabs.songs ? tabs.songs.getContent().title : "";
       return title ? "Song \xB7 " + title : "Song";
     }
@@ -416,6 +453,14 @@
       const planText = tabs.plan ? tabs.plan.summary() : null;
       planLine.textContent = planText || "";
       planLine.classList.toggle("hidden", !planText);
+      const live = tabs.timer ? tabs.timer.live() : null;
+      timerControls.classList.toggle("hidden", !live);
+      if (live) {
+        timerText.textContent = live.text + (live.paused ? " (paused)" : "") + (live.title ? " \xB7 " + live.title : "");
+        btnTimerPause.textContent = live.paused ? "Resume" : "Pause";
+        btnTimerPause.classList.toggle("hidden", !live.canControl);
+        btnTimerReset.classList.toggle("hidden", !live.canControl);
+      }
       btnShow.disabled = !p.has;
       btnHide.disabled = !session.isLive;
       btnPrev.disabled = !p.canNav;
@@ -428,12 +473,12 @@
     btnShow.addEventListener("click", () => {
       const tab = activeTab();
       if (!tab || !tab.preview().has) {
-        setStatus(session.activeTab === "scripture" ? "Look up a verse first." : "No slide text to display.", "error");
+        setStatus(NEEDS[session.activeTab] || "Nothing to show.", "error");
         return;
       }
       if (tab.markShown) tab.markShown();
       session.show();
-      setStatus(session.activeTab === "scripture" ? "Verse is live." : "Slide is live.", "success");
+      setStatus(LIVE_MSG[session.activeTab] || "Live.", "success");
     });
     btnHide.addEventListener("click", () => session.hide());
     btnClear.addEventListener("click", () => {
@@ -442,6 +487,13 @@
     });
     btnPrev.addEventListener("click", () => step(-1));
     btnNext.addEventListener("click", () => step(1));
+    btnTimerPause.addEventListener("click", () => {
+      const live = tabs.timer.live();
+      if (!live) return;
+      if (live.paused) tabs.timer.resume();
+      else tabs.timer.pause();
+    });
+    btnTimerReset.addEventListener("click", () => tabs.timer.reset());
     document.addEventListener("keydown", (e) => {
       const tag = document.activeElement ? document.activeElement.tagName : "";
       if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
@@ -2616,6 +2668,12 @@ ${DELIMITER}
   }
   var songItem = (songId, uid2 = uid) => ({ id: "i_" + uid2(), type: "song", songId });
   var readingItem = (ref, translation, uid2 = uid) => ({ id: "i_" + uid2(), type: "reading", ref, translation });
+  var announcementItem = ({ title = "", body = "" }, uid2 = uid) => ({ id: "i_" + uid2(), type: "announcement", title: title.trim(), body: body.trim() });
+  function timerItem({ mode, seconds, at, title = "" }, uid2 = uid) {
+    const base = { id: "i_" + uid2(), type: "timer", mode };
+    const spec = mode === "clock" ? { at } : { seconds };
+    return { ...base, ...spec, title: title.trim() };
+  }
   function addItem(plan, item, afterId = null) {
     const at = afterId === null ? -1 : plan.items.findIndex((i) => i.id === afterId);
     const index = at === -1 ? plan.items.length : at + 1;
@@ -2644,6 +2702,10 @@ ${DELIMITER}
     let n = 2;
     while (taken.has((base + " (" + n + ")").toLowerCase())) n += 1;
     return base + " (" + n + ")";
+  }
+  function replaceItem(plan, id, item) {
+    if (!plan.items.some((i) => i.id === id)) return plan;
+    return { ...plan, items: plan.items.map((i) => i.id === id ? { ...item, id } : i) };
   }
 
   // src/plan/folder.js
@@ -2790,17 +2852,84 @@ ${DELIMITER}
     return { load, save, loadLastId, saveLastId, loadDirty, saveDirty };
   }
 
+  // src/overlay/timer-clock.js
+  function remainingMs(timer, now) {
+    if (typeof timer.endAt === "number") return Math.max(0, timer.endAt - now);
+    return Math.max(0, timer.remainingMs || 0);
+  }
+  function formatClock(ms) {
+    const total = Math.ceil(Math.max(0, ms) / 1e3);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor(total % 3600 / 60);
+    const seconds = total % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return hours > 0 ? hours + ":" + pad(minutes) + ":" + pad(seconds) : minutes + ":" + pad(seconds);
+  }
+
+  // src/plan/extras.js
+  var MAX_TIMER_SECONDS = 359999;
+  var CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+  var isValidClockTime = (at) => typeof at === "string" && CLOCK_TIME.test(at);
+  function isValidTimerSpec(spec) {
+    if (!spec || typeof spec !== "object") return false;
+    if (spec.mode === "duration") {
+      return Number.isInteger(spec.seconds) && spec.seconds >= 1 && spec.seconds <= MAX_TIMER_SECONDS;
+    }
+    if (spec.mode === "clock") return isValidClockTime(spec.at);
+    return false;
+  }
+  function clockEndAt(at, now) {
+    const [hours, minutes] = at.split(":").map(Number);
+    const day = new Date(now);
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hours, minutes, 0, 0).getTime();
+  }
+  function describeTimerSpec(spec) {
+    return spec.mode === "clock" ? "at " + spec.at : formatClock(spec.seconds * 1e3);
+  }
+  function parseClockInput(text) {
+    const raw = typeof text === "string" ? text.trim() : "";
+    const match = /^(\d{1,2}):(\d{2})$/.exec(raw) || /^(\d{1,2})(\d{2})$/.exec(raw);
+    if (!match) return null;
+    const at = match[1].padStart(2, "0") + ":" + match[2];
+    return isValidClockTime(at) ? at : null;
+  }
+  var WHOLE_NUMBER = /^\d+$/;
+  function announcementFromInputs({ title = "", body = "" }) {
+    if (!body.trim()) return { ok: false, hint: "Write the text to show." };
+    return { ok: true, draft: { type: "announcement", title: title.trim(), body: body.trim() } };
+  }
+  function timerFromInputs({ mode, title = "", minutes = "", seconds = "", clock = "" }) {
+    const label = title.trim();
+    if (mode === "clock") {
+      const at = parseClockInput(clock);
+      return at ? { ok: true, draft: { type: "timer", mode: "clock", at, title: label } } : { ok: false, hint: "Enter a 24-hour time such as 10:30." };
+    }
+    const m = minutes.trim() || "0";
+    const s = seconds.trim() || "0";
+    if (!WHOLE_NUMBER.test(m) || !WHOLE_NUMBER.test(s)) return { ok: false, hint: "Use whole numbers for minutes and seconds." };
+    if (Number(s) > 59) return { ok: false, hint: "Seconds go up to 59." };
+    const total = Number(m) * 60 + Number(s);
+    if (total < 1) return { ok: false, hint: "Enter a time of at least 1 second." };
+    if (total > MAX_TIMER_SECONDS) return { ok: false, hint: "The longest timer is 99:59:59." };
+    return { ok: true, draft: { type: "timer", mode: "duration", seconds: total, title: label } };
+  }
+
   // src/plan/cursor.js
+  var titleOk = (item) => item.title === void 0 || typeof item.title === "string";
   function itemStatus(item, library) {
     if (item.type === "song") return library.get(item.songId) ? "ok" : "missing";
     if (item.type === "reading") return typeof item.ref === "string" && item.ref.trim() ? "ok" : "unsupported";
+    if (item.type === "announcement") return typeof item.body === "string" && item.body.trim() && titleOk(item) ? "ok" : "unsupported";
+    if (item.type === "timer") return isValidTimerSpec(item) && titleOk(item) ? "ok" : "unsupported";
     return "unsupported";
   }
   function itemTitle(item, library) {
     const status = itemStatus(item, library);
     if (item.type === "song") return status === "ok" ? library.get(item.songId).title || "Untitled" : "Song missing";
-    if (item.type === "reading" && status === "ok") return item.ref;
-    return "Unsupported item";
+    if (status !== "ok") return "Unsupported item";
+    if (item.type === "reading") return item.ref;
+    if (item.type === "announcement") return (item.title || "").trim() || item.body.trim().split("\n")[0];
+    return (item.title || "").trim() || describeTimerSpec(item);
   }
   var indexOfItem = (plan, id) => id === null ? -1 : plan.items.findIndex((i) => i.id === id);
   function nextLoadable(plan, currentId, library) {
@@ -2829,8 +2958,83 @@ ${DELIMITER}
     return where + " \xB7 " + (next ? "Next: " + itemTitle(next, library) : "End of plan");
   }
 
+  // src/dock/extras-editor.js
+  function initExtrasEditor({ onAdd, onSave, onShowNow }) {
+    const root = $("extras-editor"), heading = $("ed-heading"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
+    let type = "announcement";
+    let mode = "duration";
+    let editingId = null;
+    function read() {
+      return type === "announcement" ? announcementFromInputs({ title: title.value, body: text.value }) : timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
+    }
+    function setMode(next) {
+      mode = next;
+      modeButtons.forEach((button) => {
+        const on = button.dataset.value === mode;
+        button.classList.toggle("on", on);
+        button.setAttribute("aria-pressed", String(on));
+      });
+      durationFields.classList.toggle("hidden", mode !== "duration");
+      clockFields.classList.toggle("hidden", mode !== "clock");
+    }
+    function update() {
+      const result = read();
+      hint.textContent = result.ok ? "" : result.hint;
+      btnAdd.disabled = !result.ok;
+      btnShow.disabled = !result.ok;
+    }
+    function close() {
+      root.classList.add("hidden");
+      editingId = null;
+    }
+    function open({ type: nextType, item = null }) {
+      type = nextType;
+      editingId = item ? item.id : null;
+      heading.textContent = (item ? "Edit " : "New ") + (type === "announcement" ? "announcement" : "timer");
+      announcementFields.classList.toggle("hidden", type !== "announcement");
+      timerFields.classList.toggle("hidden", type !== "timer");
+      title.value = item ? item.title || "" : "";
+      text.value = item && type === "announcement" ? item.body || "" : "";
+      setMode(item && item.mode === "clock" ? "clock" : "duration");
+      const total = item && item.mode === "duration" && Number.isInteger(item.seconds) && item.seconds > 0 ? item.seconds : 0;
+      minutes.value = total ? String(Math.floor(total / 60)) : "";
+      seconds.value = total ? String(total % 60) : "";
+      clock.value = item && item.mode === "clock" ? item.at || "" : "";
+      btnAdd.textContent = item ? "Save" : "Add to plan";
+      root.classList.remove("hidden");
+      update();
+      (type === "announcement" ? text : minutes).focus();
+    }
+    [title, text, minutes, seconds, clock].forEach((field) => field.addEventListener("input", update));
+    modeButtons.forEach((button) => button.addEventListener("click", () => {
+      setMode(button.dataset.value);
+      update();
+    }));
+    btnAdd.addEventListener("click", () => {
+      const result = read();
+      if (!result.ok) return;
+      if (editingId) onSave(result.draft, editingId);
+      else onAdd(result.draft);
+      close();
+    });
+    btnShow.addEventListener("click", () => {
+      const result = read();
+      if (!result.ok) return;
+      onShowNow(result.draft);
+      close();
+    });
+    btnCancel.addEventListener("click", close);
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        close();
+        e.stopPropagation();
+      }
+    });
+    return { open, close, isOpen: () => !root.classList.contains("hidden") };
+  }
+
   // src/dock/plan-tab.js
-  var TYPE_ICON = { song: "\u266B", reading: "\u271D" };
+  var TYPE_ICON = { song: "\u266B", reading: "\u271D", announcement: "\u270E", timer: "\u23F1" };
   var BANNER_TEXT = {
     local: "Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.",
     "folder-lost": "Lost access to the library folder. Plans are safe in this browser. Open Songs, Library tools and choose Reconnect."
@@ -2867,6 +3071,31 @@ ${DELIMITER}
       store.setLastId(plan.id);
       render();
     });
+    const draftItem = (draft) => draft.type === "announcement" ? announcementItem(draft) : timerItem(draft);
+    function showNow(draft) {
+      const item = draftItem(draft);
+      if (!tabs[draft.type].load(item)) {
+        setStatus("That could not be loaded.", "error");
+        return;
+      }
+      session.setTab(draft.type);
+      if (tabs[draft.type].markShown) tabs[draft.type].markShown();
+      session.show();
+      setStatus(draft.type === "timer" ? "Timer is running." : "Announcement is live.", "success");
+    }
+    const editor = initExtrasEditor({
+      onAdd: (draft) => {
+        edit((p) => addItem(p, draftItem(draft), currentId));
+        setStatus("Added " + (draft.title || draft.type) + " to the plan.", "success");
+      },
+      onSave: (draft, id) => {
+        const saved = draftItem(draft);
+        edit((p) => replaceItem(p, id, saved));
+        if (id === currentId) tabs[draft.type].load(saved);
+        setStatus("Saved.", "success");
+      },
+      onShowNow: showNow
+    });
     function renderSelect() {
       const known = store.list();
       const entries = known.some((p) => p.id === plan.id) ? known : [...known, plan];
@@ -2901,6 +3130,8 @@ ${DELIMITER}
         const count = library.get(item.songId).slides.length;
         return count + (count === 1 ? " slide" : " slides");
       }
+      if (item.type === "announcement") return "announcement";
+      if (item.type === "timer") return describeTimerSpec(item);
       return item.translation || "reading";
     }
     function renderRow(item, index, currentIndex) {
@@ -2944,7 +3175,9 @@ ${DELIMITER}
       up.disabled = index === 0;
       const down = actionButton("btn btn-ghost", "Move down", () => edit((p) => moveItem(p, item.id, 1)));
       down.disabled = index === plan.items.length - 1;
-      actions.append(up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
+      const canEdit = item.type === "announcement" || item.type === "timer";
+      const editButton = canEdit ? [actionButton("btn btn-ghost", "Edit", () => editor.open({ type: item.type, item }))] : [];
+      actions.append(...editButton, up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
       return actions;
     }
     function removeRow(id) {
@@ -3007,6 +3240,9 @@ ${DELIMITER}
             return;
           }
           session.setTab("songs");
+        } else if (item.type === "announcement" || item.type === "timer") {
+          tabs[item.type].load(item);
+          session.setTab(item.type);
         } else {
           const ok = await tabs.scripture.loadReading(item.ref, item.translation);
           if (ok === null) return;
@@ -3114,6 +3350,8 @@ ${DELIMITER}
       select.blur();
       if (chosen) openPlan(chosen);
     });
+    $("btn-plan-add-announcement").addEventListener("click", () => editor.open({ type: "announcement" }));
+    $("btn-plan-add-timer").addEventListener("click", () => editor.open({ type: "timer" }));
     btnNext.addEventListener("click", nextItem);
     $("btn-plan-add-song").addEventListener("click", () => startPicking("songs"));
     $("btn-plan-add-verse").addEventListener("click", () => startPicking("scripture"));
@@ -3142,6 +3380,144 @@ ${DELIMITER}
       isPicking: () => picking !== null,
       summary: () => planSummary(plan, currentId, library)
     };
+  }
+
+  // src/dock/timer-run.js
+  var specOf = (item) => item.mode === "clock" ? { mode: "clock", at: item.at } : { mode: "duration", seconds: item.seconds };
+  var fullMs = (spec) => spec.seconds * 1e3;
+  function createTimerRun(now = Date.now) {
+    let loaded = null;
+    let running = null;
+    const isPaused = () => !!running && running.spec.mode === "duration" && typeof running.timer.endAt !== "number";
+    function clockTimer(spec) {
+      const endAt = clockEndAt(spec.at, now());
+      return endAt <= now() ? { remainingMs: 0 } : { endAt };
+    }
+    const canControl = () => !!running && running.spec.mode === "duration";
+    function previewTimer(spec) {
+      return spec.mode === "clock" ? clockTimer(spec) : { remainingMs: fullMs(spec) };
+    }
+    return {
+      load(item) {
+        if (!isValidTimerSpec(item)) return false;
+        loaded = { spec: specOf(item), title: (item.title || "").trim() };
+        return true;
+      },
+      loaded: () => loaded,
+      previewTimer,
+      /** The loaded timer goes on air: a duration starts from the full time, a clock timer follows the clock. */
+      start() {
+        if (!loaded) return null;
+        const { spec, title } = loaded;
+        const timer = spec.mode === "clock" ? clockTimer(spec) : { endAt: now() + fullMs(spec) };
+        running = { spec, title, timer };
+        return timer;
+      },
+      running: () => running,
+      canControl,
+      isPaused,
+      pause() {
+        if (!canControl() || isPaused()) return false;
+        running.timer = { remainingMs: remainingMs(running.timer, now()) };
+        return true;
+      },
+      resume() {
+        if (!canControl() || !isPaused()) return false;
+        running.timer = { endAt: now() + running.timer.remainingMs };
+        return true;
+      },
+      reset() {
+        if (!canControl()) return false;
+        running.timer = { endAt: now() + fullMs(running.spec) };
+        return true;
+      },
+      remainingNow: () => running ? remainingMs(running.timer, now()) : null
+    };
+  }
+
+  // src/dock/extras-tab.js
+  var DISPLAY_TICK_MS = 1e3;
+  var NOTHING = { has: false, text: "Nothing loaded", canNav: false };
+  function initExtrasTab({ session, refresh, now = Date.now, startTicker = true }) {
+    const run = createTimerRun(now);
+    let announcement = { title: "", body: "" };
+    const announcementTab = {
+      load(item) {
+        announcement = { title: (item.title || "").trim(), body: (item.body || "").trim() };
+        refresh();
+        return announcement.body.length > 0;
+      },
+      getContent: () => ({ ...announcement }),
+      preview() {
+        if (!announcement.body) return { ...NOTHING, sub: "Announcement" };
+        return {
+          has: true,
+          text: announcement.body,
+          sub: announcement.title ? "Announcement \xB7 " + announcement.title : "Announcement",
+          canNav: false
+        };
+      },
+      step() {
+      }
+    };
+    function timerContent() {
+      const loaded = run.loaded();
+      if (!loaded) return { title: "", body: "", timer: { remainingMs: 0 } };
+      const running = run.running();
+      const timer = running && running.spec === loaded.spec ? running.timer : run.previewTimer(loaded.spec);
+      return { title: loaded.title, body: "", timer };
+    }
+    const isLiveTimer = () => session.isLive && session.liveTab === "timer" && !!run.running();
+    function pushLive() {
+      session.updateLive({ timer: run.running().timer });
+      refresh();
+    }
+    const timerTab = {
+      load(item) {
+        const ok = run.load(item);
+        refresh();
+        return ok;
+      },
+      getContent: timerContent,
+      preview() {
+        const loaded = run.loaded();
+        if (!loaded) return { ...NOTHING, sub: "Timer" };
+        const { timer } = timerContent();
+        return {
+          has: true,
+          text: formatClock(remainingMs(timer, now())),
+          sub: "Timer \xB7 " + (loaded.title || describeTimerSpec(loaded.spec)),
+          canNav: false
+        };
+      },
+      /** Show starts the loaded timer (a duration from its full time; pressing Show again restarts it). */
+      markShown() {
+        run.start();
+      },
+      step() {
+      },
+      /** The clock that is on air, for the live bar's controls, or null. */
+      live() {
+        if (!isLiveTimer()) return null;
+        const running = run.running();
+        return { text: formatClock(run.remainingNow()), title: running.title, paused: run.isPaused(), canControl: run.canControl() };
+      },
+      pause() {
+        if (isLiveTimer() && run.pause()) pushLive();
+      },
+      resume() {
+        if (isLiveTimer() && run.resume()) pushLive();
+      },
+      reset() {
+        if (isLiveTimer() && run.reset()) pushLive();
+      }
+    };
+    if (startTicker) {
+      setInterval(() => {
+        if (session.activeTab === "timer" || session.liveTab === "timer") refresh();
+      }, DISPLAY_TICK_MS);
+    }
+    return { announcement: announcementTab, timer: timerTab };
   }
 
   // src/dock/main.js
@@ -3186,7 +3562,9 @@ ${DELIMITER}
         readSettings: () => store.styleState(),
         providers: {
           scripture: () => tabs.scripture ? tabs.scripture.getContent() : EMPTY_SCRIPTURE,
-          songs: () => tabs.songs ? tabs.songs.getContent() : EMPTY_SONG
+          songs: () => tabs.songs ? tabs.songs.getContent() : EMPTY_SONG,
+          announcement: () => tabs.announcement ? tabs.announcement.getContent() : EMPTY_SONG,
+          timer: () => tabs.timer ? tabs.timer.getContent() : { ...EMPTY_SONG, timer: { remainingMs: 0 } }
         },
         onChange: () => {
           if (liveBar) liveBar.refresh();
@@ -3194,6 +3572,9 @@ ${DELIMITER}
         }
       });
       liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
+      const extras = initExtrasTab({ session, refresh: () => liveBar.refresh() });
+      tabs.announcement = extras.announcement;
+      tabs.timer = extras.timer;
       const scripture = createScriptureApi({
         cache: idbCache(openKv("obs-stage-cache"), report("cache")),
         offline: createOfflineProvider()

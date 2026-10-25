@@ -20,6 +20,11 @@
       <span id="preview-text" class="preview-text">Nothing loaded</span>
       <small id="preview-sub" class="preview-sub">Look up a verse or pick a slide</small>
     </div>
+    <div id="timer-controls" class="timer-controls hidden">
+      <span id="timer-live-text" class="timer-live-text"></span>
+      <button id="btn-timer-pause" class="btn btn-ghost" type="button">Pause</button>
+      <button id="btn-timer-reset" class="btn btn-ghost" type="button">Reset</button>
+    </div>
     <div id="plan-line" class="plan-line hidden"></div>
     <div class="live-btns">
       <button id="btn-prev" class="btn btn-step" type="button" aria-label="Previous" disabled>&lsaquo;</button>
@@ -57,9 +62,40 @@
     </div>
     <p id="plan-unreadable" class="faint hidden"></p>
     <ol id="plan-list" class="plan-list"></ol>
-    <div class="row">
-      <button id="btn-plan-add-song" class="btn btn-ghost grow" type="button">+ Song</button>
-      <button id="btn-plan-add-verse" class="btn btn-ghost grow" type="button">+ Verse</button>
+    <div class="row wrap add-row">
+      <button id="btn-plan-add-song" class="btn btn-ghost" type="button">+ Song</button>
+      <button id="btn-plan-add-verse" class="btn btn-ghost" type="button">+ Verse</button>
+      <button id="btn-plan-add-announcement" class="btn btn-ghost" type="button">+ Announcement</button>
+      <button id="btn-plan-add-timer" class="btn btn-ghost" type="button">+ Timer</button>
+    </div>
+    <div id="extras-editor" class="extras-editor hidden" role="group" aria-labelledby="ed-heading">
+      <strong id="ed-heading">New announcement</strong>
+      <label class="lbl" for="ed-title">Title <span class="faint">(optional)</span></label>
+      <input id="ed-title" class="field" type="text" autocomplete="off" spellcheck="false">
+      <div id="ed-announcement-fields">
+        <label class="lbl" for="ed-text">Text</label>
+        <textarea id="ed-text" class="area" placeholder="What should appear on screen?"></textarea>
+      </div>
+      <div id="ed-timer-fields" class="hidden">
+        <div id="ed-mode" class="seg" role="group" aria-label="Timer type">
+          <button type="button" data-value="duration">Duration</button>
+          <button type="button" data-value="clock">Clock time</button>
+        </div>
+        <div id="ed-duration-fields" class="row">
+          <label class="lbl">Minutes <input id="ed-minutes" class="field" type="number" min="0" max="5999" inputmode="numeric"></label>
+          <label class="lbl">Seconds <input id="ed-seconds" class="field" type="number" min="0" max="59" inputmode="numeric"></label>
+        </div>
+        <div id="ed-clock-fields" class="hidden">
+          <label class="lbl" for="ed-clock">Count down to (24-hour, such as 10:30)</label>
+          <input id="ed-clock" class="field" type="text" inputmode="numeric" placeholder="10:30" autocomplete="off">
+        </div>
+      </div>
+      <p id="ed-hint" class="faint"></p>
+      <div class="row">
+        <button id="ed-add" class="btn btn-primary grow" type="button">Add to plan</button>
+        <button id="ed-show" class="btn btn-ghost" type="button">Show now</button>
+        <button id="ed-cancel" class="btn btn-ghost" type="button">Cancel</button>
+      </div>
     </div>
     <button id="btn-next-item" class="btn btn-primary next-item" type="button" disabled>Next item &raquo;</button>
   </section>

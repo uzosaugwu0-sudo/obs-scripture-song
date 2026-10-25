@@ -1,8 +1,10 @@
 import { $ } from './util.js';
-import { createPlan, addItem, songItem, readingItem, renamePlan, moveItem, moveItemTo, removeItem, DEFAULT_PLAN_NAME } from '../plan/model.js';
+import { createPlan, addItem, songItem, readingItem, announcementItem, timerItem, renamePlan, moveItem, moveItemTo, removeItem, replaceItem, DEFAULT_PLAN_NAME } from '../plan/model.js';
 import { itemStatus, itemTitle, indexOfItem, nextLoadable, prevLoadable, currentAfterRemove, planSummary } from '../plan/cursor.js';
+import { describeTimerSpec } from '../plan/extras.js';
+import { initExtrasEditor } from './extras-editor.js';
 
-const TYPE_ICON = { song: '♫', reading: '✝' };
+const TYPE_ICON = { song: '♫', reading: '✝', announcement: '✎', timer: '⏱' };
 const BANNER_TEXT = {
   local: 'Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.',
   'folder-lost': 'Lost access to the library folder. Plans are safe in this browser. Open Songs, Library tools and choose Reconnect.',
@@ -53,6 +55,35 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
 
   // ── Rendering ─────────────────────────────────────────────────────────────
 
+  // ── Announcements and timers: the editor ──────────────────────────────────
+
+  const draftItem = (draft) => (draft.type === 'announcement' ? announcementItem(draft) : timerItem(draft));
+
+  /** Put a draft on air right now. The plan is not touched. */
+  function showNow(draft) {
+    const item = draftItem(draft);
+    if (!tabs[draft.type].load(item)) { setStatus('That could not be loaded.', 'error'); return; }
+    session.setTab(draft.type);
+    if (tabs[draft.type].markShown) tabs[draft.type].markShown();
+    session.show();
+    setStatus(draft.type === 'timer' ? 'Timer is running.' : 'Announcement is live.', 'success');
+  }
+
+  const editor = initExtrasEditor({
+    onAdd: (draft) => {
+      edit((p) => addItem(p, draftItem(draft), currentId));
+      setStatus('Added ' + (draft.title || draft.type) + ' to the plan.', 'success');
+    },
+    onSave: (draft, id) => {
+      const saved = draftItem(draft);
+      edit((p) => replaceItem(p, id, saved));
+      // The loaded item is what the next Show uses; keep it in step with the edit (what is on air is untouched).
+      if (id === currentId) tabs[draft.type].load(saved);
+      setStatus('Saved.', 'success');
+    },
+    onShowNow: showNow,
+  });
+
   function renderSelect() {
     const known = store.list();
     const entries = known.some((p) => p.id === plan.id) ? known : [...known, plan];
@@ -89,6 +120,8 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
       const count = library.get(item.songId).slides.length;
       return count + (count === 1 ? ' slide' : ' slides');
     }
+    if (item.type === 'announcement') return 'announcement';
+    if (item.type === 'timer') return describeTimerSpec(item);
     return item.translation || 'reading';
   }
 
@@ -133,7 +166,9 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
     up.disabled = index === 0;
     const down = actionButton('btn btn-ghost', 'Move down', () => edit((p) => moveItem(p, item.id, 1)));
     down.disabled = index === plan.items.length - 1;
-    actions.append(up, down, actionButton('btn btn-danger', 'Remove', () => removeRow(item.id)));
+    const canEdit = item.type === 'announcement' || item.type === 'timer';
+    const editButton = canEdit ? [actionButton('btn btn-ghost', 'Edit', () => editor.open({ type: item.type, item }))] : [];
+    actions.append(...editButton, up, down, actionButton('btn btn-danger', 'Remove', () => removeRow(item.id)));
     return actions;
   }
 
@@ -198,6 +233,9 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
       if (item.type === 'song') {
         if (!tabs.songs.loadSong(item.songId)) { setStatus('Finish or discard the song you are editing first.', 'error'); return; }
         session.setTab('songs');
+      } else if (item.type === 'announcement' || item.type === 'timer') {
+        tabs[item.type].load(item);
+        session.setTab(item.type);
       } else {
         const ok = await tabs.scripture.loadReading(item.ref, item.translation);
         if (ok === null) return;
@@ -302,6 +340,8 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
     if (chosen) openPlan(chosen);
   });
 
+  $('btn-plan-add-announcement').addEventListener('click', () => editor.open({ type: 'announcement' }));
+  $('btn-plan-add-timer').addEventListener('click', () => editor.open({ type: 'timer' }));
   btnNext.addEventListener('click', nextItem);
   $('btn-plan-add-song').addEventListener('click', () => startPicking('songs'));
   $('btn-plan-add-verse').addEventListener('click', () => startPicking('scripture'));

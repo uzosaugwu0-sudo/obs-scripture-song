@@ -87,6 +87,7 @@ html, body {
 }
 #ov-title:empty, #ov-ref:empty { display: none; }
 .ln { display: block; }
+.kind-timer #ov-body { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: 0.02em; line-height: 1.2; }
 
 .accent {
   display: block;
@@ -96,7 +97,9 @@ html, body {
 .accent-top    { width: 60%; max-width: 400px; margin: 6px auto 2px; opacity: 0.45; }
 .accent-bottom { width: 80%; max-width: 900px; margin: 14px auto 10px; opacity: 0.50; }
 #stage.kind-verse .accent-top,
-#stage.kind-song  .accent-bottom { display: none; }
+#stage.kind-song  .accent-bottom,
+#stage.kind-announcement .accent-bottom,
+#stage.kind-timer .accent-bottom { display: none; }
 #stage.no-title   .accent-top    { display: none; }
 #stage.no-ref     .accent-bottom { display: none; }
 /* Theme: Frosted (dark glass) */

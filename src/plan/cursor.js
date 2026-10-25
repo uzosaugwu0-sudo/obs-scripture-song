@@ -1,14 +1,22 @@
+import { isValidTimerSpec, describeTimerSpec } from './extras.js';
+
+const titleOk = (item) => item.title === undefined || typeof item.title === 'string';
+
 export function itemStatus(item, library) {
   if (item.type === 'song') return library.get(item.songId) ? 'ok' : 'missing';
   if (item.type === 'reading') return typeof item.ref === 'string' && item.ref.trim() ? 'ok' : 'unsupported';
+  if (item.type === 'announcement') return typeof item.body === 'string' && item.body.trim() && titleOk(item) ? 'ok' : 'unsupported';
+  if (item.type === 'timer') return isValidTimerSpec(item) && titleOk(item) ? 'ok' : 'unsupported';
   return 'unsupported';
 }
 
 export function itemTitle(item, library) {
   const status = itemStatus(item, library);
   if (item.type === 'song') return status === 'ok' ? (library.get(item.songId).title || 'Untitled') : 'Song missing';
-  if (item.type === 'reading' && status === 'ok') return item.ref;
-  return 'Unsupported item';
+  if (status !== 'ok') return 'Unsupported item';
+  if (item.type === 'reading') return item.ref;
+  if (item.type === 'announcement') return (item.title || '').trim() || item.body.trim().split('\n')[0];
+  return (item.title || '').trim() || describeTimerSpec(item);
 }
 
 export const indexOfItem = (plan, id) => (id === null ? -1 : plan.items.findIndex((i) => i.id === id));
