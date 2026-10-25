@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupOverlay } from './helpers.js';
+import { setupOverlay } from '../helpers.js';
 
 const THEMES = ['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom'];
 const ANIMATIONS = ['rise', 'wipe', 'lines', 'cut'];

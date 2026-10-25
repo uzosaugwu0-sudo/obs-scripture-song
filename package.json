@@ -6,7 +6,7 @@
     "build": "node scripts/build.mjs",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
-    "smoke": "playwright test",
+    "e2e": "playwright test",
     "fetch-bibles": "node scripts/fetch-bibles.mjs"
   },
   "devDependencies": {

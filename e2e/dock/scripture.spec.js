@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openPair, lookup, blockBibleApi } from './helpers.js';
+import { openPair, lookup, blockBibleApi } from '../helpers.js';
 
 test.beforeEach(async ({ context }) => { await blockBibleApi(context); });
 

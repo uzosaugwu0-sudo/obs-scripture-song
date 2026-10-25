@@ -159,7 +159,7 @@ The dock and overlay are built from the modules in `src/` into the `dist/` folde
 npm install
 npm test            # unit tests
 npm run build       # rebuild dist/
-npm run smoke       # browser tests (builds first with npm run build)
+npm run e2e         # browser tests (builds first with npm run build)
 ```
 
 Rebuild with `npm run build` and commit `dist/` together with any change to `src/`.

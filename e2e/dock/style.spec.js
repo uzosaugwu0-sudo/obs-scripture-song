@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openPair, lookup, createSong, blockBibleApi } from './helpers.js';
+import { openPair, lookup, createSong, blockBibleApi } from '../helpers.js';
 
 const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const swatch = (page, value) => page.locator(`#theme-swatches button[data-value="${value}"]`);
