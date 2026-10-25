@@ -26,14 +26,16 @@
   }
 
   // src/dock/session.js
-  var TABS = ["scripture", "songs"];
+  var KIND_OF = { scripture: "verse", songs: "song", announcement: "announcement", timer: "timer" };
+  var TABS = Object.keys(KIND_OF);
   function createSession({ transport, readSettings, providers, onChange = () => {
   } }) {
     const s = { activeTab: "scripture", isLive: false, liveTab: null, phase: "off", liveContent: null };
     const snapshot = () => ({ activeTab: s.activeTab, isLive: s.isLive, liveTab: s.liveTab, phase: s.phase });
     const notify = () => onChange(snapshot());
     function content(tab) {
-      return tab === "scripture" ? { kind: "verse", title: "", ...providers.scripture() } : { kind: "song", reference: "", ...providers.songs() };
+      const provided = providers[tab] ? providers[tab]() : {};
+      return { kind: KIND_OF[tab], title: "", reference: "", body: "", ...provided };
     }
     function buildState(action, { forShow = false, fresh = false } = {}) {
       const live = action === "show" && s.isLive && s.liveTab && !forShow;
@@ -54,6 +56,9 @@
       get phase() {
         return s.phase;
       },
+      get liveContent() {
+        return s.liveContent;
+      },
       buildState,
       setTab(tab) {
         if (!TABS.includes(tab)) return;
@@ -63,7 +68,7 @@
       show() {
         const state = buildState("show", { forShow: true });
         transport.send(state);
-        s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body };
+        s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body, timer: state.timer };
         s.liveTab = s.activeTab;
         s.isLive = true;
         s.phase = "live";
@@ -86,6 +91,13 @@
       /** Re-send what is on air with the current style. fresh: true re-reads the content too (an edit to the live slide). */
       resendIfLive({ fresh = false } = {}) {
         if (s.isLive) transport.send(buildState("show", { fresh }));
+      },
+      /** Change part of what is on air (a paused or reset timer) and send it. Does nothing unless something is live. */
+      updateLive(patch) {
+        if (!s.isLive || !s.liveContent) return;
+        s.liveContent = { ...s.liveContent, ...patch };
+        transport.send({ ...readSettings(), action: "show", visible: true, ...s.liveContent });
+        notify();
       }
     };
   }
@@ -404,12 +416,29 @@
   // src/dock/live-bar.js
   var PHASE_LABEL = { off: "OFF", live: "LIVE", hidden: "HIDDEN" };
   var EMPTY_PREVIEW = { has: false, text: "Nothing loaded", sub: "Look up a verse or pick a slide", canNav: false };
+  var NEEDS = {
+    scripture: "Look up a verse first.",
+    songs: "No slide text to display.",
+    announcement: "Write the announcement first.",
+    timer: "Set up the timer first."
+  };
+  var LIVE_MSG = {
+    scripture: "Verse is live.",
+    songs: "Slide is live.",
+    announcement: "Announcement is live.",
+    timer: "Timer is running."
+  };
   function initLiveBar({ session, tabs, setStatus }) {
     const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear");
     const activeTab = () => tabs[session.activeTab] || null;
     function liveLabel() {
       if (session.phase !== "live") return "";
       if (session.liveTab === "scripture") return "Verse";
+      if (session.liveTab === "announcement" || session.liveTab === "timer") {
+        const name = session.liveTab === "timer" ? "Timer" : "Announcement";
+        const title2 = session.liveContent ? session.liveContent.title : "";
+        return title2 ? name + " \xB7 " + title2 : name;
+      }
       const title = tabs.songs ? tabs.songs.getContent().title : "";
       return title ? "Song \xB7 " + title : "Song";
     }
@@ -436,12 +465,12 @@
     btnShow.addEventListener("click", () => {
       const tab = activeTab();
       if (!tab || !tab.preview().has) {
-        setStatus(session.activeTab === "scripture" ? "Look up a verse first." : "No slide text to display.", "error");
+        setStatus(NEEDS[session.activeTab] || "Nothing to show.", "error");
         return;
       }
       if (tab.markShown) tab.markShown();
       session.show();
-      setStatus(session.activeTab === "scripture" ? "Verse is live." : "Slide is live.", "success");
+      setStatus(LIVE_MSG[session.activeTab] || "Live.", "success");
     });
     btnHide.addEventListener("click", () => session.hide());
     btnClear.addEventListener("click", () => {
@@ -2798,17 +2827,56 @@ ${DELIMITER}
     return { load, save, loadLastId, saveLastId, loadDirty, saveDirty };
   }
 
+  // src/overlay/timer-clock.js
+  function remainingMs(timer, now) {
+    if (typeof timer.endAt === "number") return Math.max(0, timer.endAt - now);
+    return Math.max(0, timer.remainingMs || 0);
+  }
+  function formatClock(ms) {
+    const total = Math.ceil(Math.max(0, ms) / 1e3);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor(total % 3600 / 60);
+    const seconds = total % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return hours > 0 ? hours + ":" + pad(minutes) + ":" + pad(seconds) : minutes + ":" + pad(seconds);
+  }
+
+  // src/plan/extras.js
+  var MAX_TIMER_SECONDS = 359999;
+  var CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+  var isValidClockTime = (at) => typeof at === "string" && CLOCK_TIME.test(at);
+  function isValidTimerSpec(spec) {
+    if (!spec || typeof spec !== "object") return false;
+    if (spec.mode === "duration") {
+      return Number.isInteger(spec.seconds) && spec.seconds >= 1 && spec.seconds <= MAX_TIMER_SECONDS;
+    }
+    if (spec.mode === "clock") return isValidClockTime(spec.at);
+    return false;
+  }
+  function clockEndAt(at, now) {
+    const [hours, minutes] = at.split(":").map(Number);
+    const day = new Date(now);
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hours, minutes, 0, 0).getTime();
+  }
+  function describeTimerSpec(spec) {
+    return spec.mode === "clock" ? "at " + spec.at : formatClock(spec.seconds * 1e3);
+  }
+
   // src/plan/cursor.js
   function itemStatus(item, library) {
     if (item.type === "song") return library.get(item.songId) ? "ok" : "missing";
     if (item.type === "reading") return typeof item.ref === "string" && item.ref.trim() ? "ok" : "unsupported";
+    if (item.type === "announcement") return typeof item.body === "string" && item.body.trim() ? "ok" : "unsupported";
+    if (item.type === "timer") return isValidTimerSpec(item) ? "ok" : "unsupported";
     return "unsupported";
   }
   function itemTitle(item, library) {
     const status = itemStatus(item, library);
     if (item.type === "song") return status === "ok" ? library.get(item.songId).title || "Untitled" : "Song missing";
-    if (item.type === "reading" && status === "ok") return item.ref;
-    return "Unsupported item";
+    if (status !== "ok") return "Unsupported item";
+    if (item.type === "reading") return item.ref;
+    if (item.type === "announcement") return (item.title || "").trim() || item.body.trim().split("\n")[0];
+    return (item.title || "").trim() || describeTimerSpec(item);
   }
   var indexOfItem = (plan, id) => id === null ? -1 : plan.items.findIndex((i) => i.id === id);
   function nextLoadable(plan, currentId, library) {
@@ -3152,6 +3220,140 @@ ${DELIMITER}
     };
   }
 
+  // src/dock/timer-run.js
+  var specOf = (item) => item.mode === "clock" ? { mode: "clock", at: item.at } : { mode: "duration", seconds: item.seconds };
+  var fullMs = (spec) => spec.seconds * 1e3;
+  function createTimerRun(now = Date.now) {
+    let loaded = null;
+    let running = null;
+    const isPaused = () => !!running && typeof running.timer.endAt !== "number";
+    const canControl = () => !!running && running.spec.mode === "duration";
+    function previewTimer(spec) {
+      return spec.mode === "clock" ? { endAt: clockEndAt(spec.at, now()) } : { remainingMs: fullMs(spec) };
+    }
+    return {
+      load(item) {
+        if (!isValidTimerSpec(item)) return false;
+        loaded = { spec: specOf(item), title: (item.title || "").trim() };
+        return true;
+      },
+      loaded: () => loaded,
+      previewTimer,
+      /** The loaded timer goes on air: a duration starts from the full time, a clock timer follows the clock. */
+      start() {
+        if (!loaded) return null;
+        const { spec, title } = loaded;
+        const timer = spec.mode === "clock" ? { endAt: clockEndAt(spec.at, now()) } : { endAt: now() + fullMs(spec) };
+        running = { spec, title, timer };
+        return timer;
+      },
+      running: () => running,
+      canControl,
+      isPaused,
+      pause() {
+        if (!canControl() || isPaused()) return false;
+        running.timer = { remainingMs: remainingMs(running.timer, now()) };
+        return true;
+      },
+      resume() {
+        if (!canControl() || !isPaused()) return false;
+        running.timer = { endAt: now() + running.timer.remainingMs };
+        return true;
+      },
+      reset() {
+        if (!canControl()) return false;
+        running.timer = { endAt: now() + fullMs(running.spec) };
+        return true;
+      },
+      remainingNow: () => running ? remainingMs(running.timer, now()) : null
+    };
+  }
+
+  // src/dock/extras-tab.js
+  var DISPLAY_TICK_MS = 1e3;
+  var NOTHING = { has: false, text: "Nothing loaded", canNav: false };
+  function initExtrasTab({ session, refresh, now = Date.now, startTicker = true }) {
+    const run = createTimerRun(now);
+    let announcement = { title: "", body: "" };
+    const announcementTab = {
+      load(item) {
+        announcement = { title: (item.title || "").trim(), body: (item.body || "").trim() };
+        refresh();
+        return announcement.body.length > 0;
+      },
+      getContent: () => ({ ...announcement }),
+      preview() {
+        if (!announcement.body) return { ...NOTHING, sub: "Announcement" };
+        return {
+          has: true,
+          text: announcement.body,
+          sub: announcement.title ? "Announcement \xB7 " + announcement.title : "Announcement",
+          canNav: false
+        };
+      },
+      step() {
+      }
+    };
+    function timerContent() {
+      const loaded = run.loaded();
+      if (!loaded) return { title: "", body: "", timer: { remainingMs: 0 } };
+      const running = run.running();
+      const timer = running && running.spec === loaded.spec ? running.timer : run.previewTimer(loaded.spec);
+      return { title: loaded.title, body: "", timer };
+    }
+    const isLiveTimer = () => session.isLive && session.liveTab === "timer" && !!run.running();
+    function pushLive() {
+      session.updateLive({ timer: run.running().timer });
+      refresh();
+    }
+    const timerTab = {
+      load(item) {
+        const ok = run.load(item);
+        refresh();
+        return ok;
+      },
+      getContent: timerContent,
+      preview() {
+        const loaded = run.loaded();
+        if (!loaded) return { ...NOTHING, sub: "Timer" };
+        const { timer } = timerContent();
+        return {
+          has: true,
+          text: formatClock(remainingMs(timer, now())),
+          sub: "Timer \xB7 " + (loaded.title || describeTimerSpec(loaded.spec)),
+          canNav: false
+        };
+      },
+      /** Show starts the loaded timer (a duration from its full time; pressing Show again restarts it). */
+      markShown() {
+        run.start();
+      },
+      step() {
+      },
+      /** The clock that is on air, for the live bar's controls, or null. */
+      live() {
+        if (!isLiveTimer()) return null;
+        const running = run.running();
+        return { text: formatClock(run.remainingNow()), title: running.title, paused: run.isPaused(), canControl: run.canControl() };
+      },
+      pause() {
+        if (isLiveTimer() && run.pause()) pushLive();
+      },
+      resume() {
+        if (isLiveTimer() && run.resume()) pushLive();
+      },
+      reset() {
+        if (isLiveTimer() && run.reset()) pushLive();
+      }
+    };
+    if (startTicker) {
+      setInterval(() => {
+        if (session.activeTab === "timer" || session.liveTab === "timer") refresh();
+      }, DISPLAY_TICK_MS);
+    }
+    return { announcement: announcementTab, timer: timerTab };
+  }
+
   // src/dock/main.js
   var diagnostics = createDiagnostics();
   var report = (context) => (err) => diagnostics.log(context, err);
@@ -3194,7 +3396,9 @@ ${DELIMITER}
         readSettings: () => store.styleState(),
         providers: {
           scripture: () => tabs.scripture ? tabs.scripture.getContent() : EMPTY_SCRIPTURE,
-          songs: () => tabs.songs ? tabs.songs.getContent() : EMPTY_SONG
+          songs: () => tabs.songs ? tabs.songs.getContent() : EMPTY_SONG,
+          announcement: () => tabs.announcement ? tabs.announcement.getContent() : EMPTY_SONG,
+          timer: () => tabs.timer ? tabs.timer.getContent() : { ...EMPTY_SONG, timer: { remainingMs: 0 } }
         },
         onChange: () => {
           if (liveBar) liveBar.refresh();
@@ -3202,6 +3406,9 @@ ${DELIMITER}
         }
       });
       liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
+      const extras = initExtrasTab({ session, refresh: () => liveBar.refresh() });
+      tabs.announcement = extras.announcement;
+      tabs.timer = extras.timer;
       const scripture = createScriptureApi({
         cache: idbCache(openKv("obs-stage-cache"), report("cache")),
         offline: createOfflineProvider()

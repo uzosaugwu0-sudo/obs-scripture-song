@@ -2,6 +2,18 @@ import { $ } from './util.js';
 
 const PHASE_LABEL = { off: 'OFF', live: 'LIVE', hidden: 'HIDDEN' };
 const EMPTY_PREVIEW = { has: false, text: 'Nothing loaded', sub: 'Look up a verse or pick a slide', canNav: false };
+const NEEDS = {
+  scripture: 'Look up a verse first.',
+  songs: 'No slide text to display.',
+  announcement: 'Write the announcement first.',
+  timer: 'Set up the timer first.',
+};
+const LIVE_MSG = {
+  scripture: 'Verse is live.',
+  songs: 'Slide is live.',
+  announcement: 'Announcement is live.',
+  timer: 'Timer is running.',
+};
 
 /**
  * The pinned bar: status, a preview of what is loaded in the active tab, and
@@ -18,8 +30,13 @@ export function initLiveBar({ session, tabs, setStatus }) {
   function liveLabel() {
     if (session.phase !== 'live') return '';
     if (session.liveTab === 'scripture') return 'Verse';
+    if (session.liveTab === 'announcement' || session.liveTab === 'timer') {
+      const name = session.liveTab === 'timer' ? 'Timer' : 'Announcement';
+      const title = session.liveContent ? session.liveContent.title : '';
+      return title ? name + ' · ' + title : name;
+    }
     const title = tabs.songs ? tabs.songs.getContent().title : '';
-    return title ? 'Song \u00b7 ' + title : 'Song';
+    return title ? 'Song · ' + title : 'Song';
   }
 
   function refresh() {
@@ -47,12 +64,12 @@ export function initLiveBar({ session, tabs, setStatus }) {
   btnShow.addEventListener('click', () => {
     const tab = activeTab();
     if (!tab || !tab.preview().has) {
-      setStatus(session.activeTab === 'scripture' ? 'Look up a verse first.' : 'No slide text to display.', 'error');
+      setStatus(NEEDS[session.activeTab] || 'Nothing to show.', 'error');
       return;
     }
     if (tab.markShown) tab.markShown();
     session.show();
-    setStatus(session.activeTab === 'scripture' ? 'Verse is live.' : 'Slide is live.', 'success');
+    setStatus(LIVE_MSG[session.activeTab] || 'Live.', 'success');
   });
   btnHide.addEventListener('click', () => session.hide());
   btnClear.addEventListener('click', () => {

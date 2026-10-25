@@ -1,4 +1,6 @@
-const TABS = ['scripture', 'songs'];
+// Tab name to the kind of thing it puts on screen.
+const KIND_OF = { scripture: 'verse', songs: 'song', announcement: 'announcement', timer: 'timer' };
+const TABS = Object.keys(KIND_OF);
 
 /**
  * What the operator is doing: which tab they are on, what is on screen, and
@@ -13,9 +15,8 @@ export function createSession({ transport, readSettings, providers, onChange = (
   const notify   = () => onChange(snapshot());
 
   function content(tab) {
-    return tab === 'scripture'
-      ? { kind: 'verse', title: '', ...providers.scripture() }
-      : { kind: 'song', reference: '', ...providers.songs() };
+    const provided = providers[tab] ? providers[tab]() : {};
+    return { kind: KIND_OF[tab], title: '', reference: '', body: '', ...provided };
   }
 
   function buildState(action, { forShow = false, fresh = false } = {}) {
@@ -31,6 +32,7 @@ export function createSession({ transport, readSettings, providers, onChange = (
     get isLive()    { return s.isLive; },
     get liveTab()   { return s.liveTab; },
     get phase()     { return s.phase; },
+    get liveContent() { return s.liveContent; },
 
     buildState,
 
@@ -42,7 +44,7 @@ export function createSession({ transport, readSettings, providers, onChange = (
     show() {
       const state = buildState('show', { forShow: true });
       transport.send(state);
-      s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body };
+      s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body, timer: state.timer };
       s.liveTab = s.activeTab;
       s.isLive = true;
       s.phase = 'live';
@@ -65,6 +67,13 @@ export function createSession({ transport, readSettings, providers, onChange = (
     /** Re-send what is on air with the current style. fresh: true re-reads the content too (an edit to the live slide). */
     resendIfLive({ fresh = false } = {}) {
       if (s.isLive) transport.send(buildState('show', { fresh }));
+    },
+    /** Change part of what is on air (a paused or reset timer) and send it. Does nothing unless something is live. */
+    updateLive(patch) {
+      if (!s.isLive || !s.liveContent) return;
+      s.liveContent = { ...s.liveContent, ...patch };
+      transport.send({ ...readSettings(), action: 'show', visible: true, ...s.liveContent });
+      notify();
     },
   };
 }
