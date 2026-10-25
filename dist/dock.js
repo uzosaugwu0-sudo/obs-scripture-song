@@ -128,7 +128,7 @@
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
-  var KINDS = Object.freeze(["verse", "song", "announcement", "timer"]);
+  var KINDS = Object.freeze(["verse", "song", "announcement", "timer", "lowerthird"]);
   var THEMES = Object.freeze(["frosted", "frosted-light", "pure", "sacred-light", "custom"]);
   var ANIMATIONS = Object.freeze(["rise", "wipe", "lines", "cut"]);
   var DEFAULTS = Object.freeze({
@@ -143,6 +143,8 @@
     // scripture reference
     timer: null,
     // timer kind only: { endAt } while running, { remainingMs } while paused
+    lowerthird: null,
+    // lowerthird kind only: { align, logo }
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -181,6 +183,15 @@
     if (typeof timer.endAt === "number") return Number.isFinite(timer.endAt);
     return typeof timer.remainingMs === "number" && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0;
   }
+  var LOWER_THIRD_ALIGNS = ["left", "center", "right"];
+  var MAX_LOGO_DATA_URL = 3e5;
+  var LOGO_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+  var isLogoDataUrl = (s) => typeof s === "string" && s.length <= MAX_LOGO_DATA_URL && LOGO_DATA_URL.test(s);
+  var textOf = (value) => typeof value === "string" ? value : "";
+  function cleanLowerThird(value) {
+    const v = value && typeof value === "object" ? value : {};
+    return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : "left", logo: isLogoDataUrl(v.logo) ? v.logo : null };
+  }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
     if (typeof raw.version === "number" && raw.version > STATE_VERSION) return null;
@@ -192,7 +203,14 @@
     if (!ACTIONS.includes(merged.action)) return null;
     if (!KINDS.includes(merged.kind)) return null;
     if (merged.kind === "timer" && merged.action !== "clear" && !validTimer(merged.timer)) return null;
-    return { ...merged, ...migrateLegacy(merged) };
+    if (merged.kind === "lowerthird" && merged.action === "show" && !textOf(merged.title).trim() && !textOf(merged.body).trim()) return null;
+    const result = { ...merged, ...migrateLegacy(merged) };
+    if (merged.kind === "lowerthird") {
+      result.title = textOf(merged.title);
+      result.body = textOf(merged.body);
+      result.lowerthird = cleanLowerThird(merged.lowerthird);
+    }
+    return result;
   }
 
   // src/transport/broadcast.js

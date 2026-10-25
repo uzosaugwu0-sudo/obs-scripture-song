@@ -89,6 +89,29 @@ html, body {
 .ln { display: block; }
 .kind-timer #ov-body { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: 0.02em; line-height: 1.2; }
 
+/* Lower third: the same card, reshaped into a name-and-title bar at the bottom */
+#ov-logo { display: none; width: auto; max-width: 220px; object-fit: contain; border-radius: 6px; flex: none; }
+#stage.has-logo #ov-logo { display: block; }
+#stage.kind-lowerthird { align-items: flex-start; padding-left: 4%; padding-right: 4%; }
+#stage.kind-lowerthird.lt-center { align-items: center; }
+#stage.kind-lowerthird.lt-right  { align-items: flex-end; }
+#stage.kind-lowerthird.pos-bottom { padding-bottom: 7vh; }
+#stage.kind-lowerthird #card { width: auto; max-width: 70%; min-height: 0 !important; flex-direction: row; justify-content: flex-start;
+  gap: 18px; border-radius: 10px; border-left: 6px solid var(--accent); }
+#stage.kind-lowerthird #wrap { width: auto; text-align: left; }
+#stage.kind-lowerthird.lt-right #wrap { text-align: right; }
+#stage.kind-lowerthird #ov-title { text-transform: none; font-variant: normal; letter-spacing: 0; margin: 0; line-height: 1.15; }
+#stage.kind-lowerthird #ov-body { width: auto; max-width: none; margin: 0; line-height: 1.3; white-space: normal; }
+#stage.kind-lowerthird #ov-body:empty { display: none; }
+#stage.kind-lowerthird .accent { display: none; }
+.kind-lowerthird.theme-frosted #ov-title, .kind-lowerthird.theme-pure #ov-title,
+.kind-lowerthird.theme-sacred-light #ov-title { color: #ffffff; }
+.kind-lowerthird.theme-frosted-light #ov-title { color: #1a2233; }
+.kind-lowerthird.theme-frosted #ov-body { color: #9ec1ff; }
+.kind-lowerthird.theme-frosted-light #ov-body { color: #2f5fd0; }
+.kind-lowerthird.theme-sacred-light #ov-body { color: #e8c97a; }
+.kind-lowerthird.theme-pure #ov-body { color: #ffffff; opacity: 0.9; }
+
 .accent {
   display: block;
   height: 1px;
