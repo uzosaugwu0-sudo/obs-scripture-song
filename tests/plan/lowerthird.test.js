@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidLowerThird, describeLowerThird, lowerThirdFromInputs, MAX_HIDE_AFTER } from '../../src/plan/extras.js';
+import { isValidLowerThird, describeLowerThird, lowerThirdFromInputs, MAX_HIDE_AFTER, MAX_ITEM_LOGO_DATA } from '../../src/plan/extras.js';
 import { lowerThirdItem, isPlanRecord, replaceItem } from '../../src/plan/model.js';
 import { itemStatus, itemTitle, nextLoadable, planSummary } from '../../src/plan/cursor.js';
 
@@ -28,6 +28,33 @@ describe('isValidLowerThird', () => {
   });
 });
 
+const DATA = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+describe('a picture kept inside the lower third', () => {
+  it('is valid when it is a small image data URL, and invalid otherwise', () => {
+    expect(isValidLowerThird({ ...ok, logoData: DATA })).toBe(true);
+    for (const logoData of ['http://example.com/a.png', 'javascript:alert(1)', 'data:text/html;base64,AAAA', 5, '']) {
+      expect(isValidLowerThird({ ...ok, logoData }), String(logoData)).toBe(false);
+    }
+    expect(isValidLowerThird({ ...ok, logoData: 'data:image/png;base64,' + 'A'.repeat(MAX_ITEM_LOGO_DATA) })).toBe(false);
+    expect(isValidLowerThird({ ...ok, logoData: null })).toBe(true);
+  });
+
+  it('comes through the editor draft and the item, and replaces any folder picture name', () => {
+    const base = { name: 'Pastor John', info: '', align: 'left', logo: 'old.png', hideAfter: '', logoData: DATA };
+    const result = lowerThirdFromInputs(base);
+    expect(result.ok).toBe(true);
+    expect(result.draft).toMatchObject({ logo: null, logoData: DATA });
+    expect(lowerThirdItem(result.draft, () => 'u1')).toMatchObject({ logo: null, logoData: DATA });
+    expect(lowerThirdFromInputs({ ...base, logoData: 'nope' })).toEqual({ ok: false, hint: 'That picture could not be used. Choose it again.' });
+    expect(lowerThirdFromInputs({ ...base, logoData: '' }).draft).toMatchObject({ logo: 'old.png', logoData: null });
+  });
+
+  it('defaults to no embedded picture on a new item', () => {
+    expect(lowerThirdItem({ name: 'A' }, () => 'u2').logoData).toBeNull();
+  });
+});
+
 describe('describeLowerThird', () => {
   it('says how it goes away', () => {
     expect(describeLowerThird(ok)).toBe('stays');
@@ -38,7 +65,7 @@ describe('describeLowerThird', () => {
 describe('lowerThirdFromInputs', () => {
   const base = { name: ' Pastor John ', info: ' Guest speaker ', align: 'center', logo: '', hideAfter: '' };
   it('builds a draft, trimming text and turning blanks into null', () => {
-    expect(lowerThirdFromInputs(base)).toEqual({ ok: true, draft: { type: 'lowerthird', name: 'Pastor John', info: 'Guest speaker', align: 'center', logo: null, hideAfter: null } });
+    expect(lowerThirdFromInputs(base)).toEqual({ ok: true, draft: { type: 'lowerthird', name: 'Pastor John', info: 'Guest speaker', align: 'center', logo: null, logoData: null, hideAfter: null } });
     expect(lowerThirdFromInputs({ ...base, logo: 'john.png', hideAfter: ' 8 ' }).draft).toMatchObject({ logo: 'john.png', hideAfter: 8 });
   });
   it('needs some text', () => {
@@ -57,7 +84,7 @@ describe('lowerThirdFromInputs', () => {
 describe('lowerThirdItem', () => {
   it('builds an item with a prefixed id that a plan record accepts', () => {
     const item = lowerThirdItem({ name: ' A ', info: ' B ', align: 'right', logo: 'a.png', hideAfter: 5 }, () => 'u1');
-    expect(item).toEqual({ id: 'i_u1', type: 'lowerthird', name: 'A', info: 'B', align: 'right', logo: 'a.png', hideAfter: 5 });
+    expect(item).toEqual({ id: 'i_u1', type: 'lowerthird', name: 'A', info: 'B', align: 'right', logo: 'a.png', logoData: null, hideAfter: 5 });
     expect(isPlanRecord({ v: 1, id: 'p', name: 'P', items: [item] })).toBe(true);
   });
   it('defaults placement, picture and hide time', () => {

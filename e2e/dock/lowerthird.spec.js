@@ -147,12 +147,59 @@ test.describe('lower thirds: the automatic hide', () => {
 });
 
 test.describe('lower thirds: pictures', () => {
-  test('without a library folder the picture controls are disabled and say why', async ({ context }) => {
+  test('with no library folder you can still choose a picture from this computer', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await openEditor(dock);
+    await expect(dock.locator('#ed-lt-logo')).toBeEnabled();
+    await expect(dock.locator('#ed-lt-add-logo')).toBeEnabled();
+    await expect(dock.locator('#ed-lt-logo-hint')).toContainText('kept inside this lower third');
+    await addPicture(dock);
+    await expect(dock.locator('#ed-lt-logo option:checked')).toHaveText('Picture from this computer');
+    await fillLowerThird(dock, { name: 'Pastor John', info: 'Guest speaker' });
+    await dock.click('#ed-show');
+    await expect(overlay.locator('#stage.has-logo')).toHaveCount(1);
+    await expect(overlay.locator('#ov-logo')).toBeVisible();
+    expect(await overlay.locator('#ov-logo').getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+  });
+
+  test('a picture chosen from this computer stays with the planned lower third after a reload', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await openEditor(dock);
+    await addPicture(dock);
+    await fillLowerThird(dock, { name: 'Pastor John', info: 'Guest speaker' });
+    await dock.click('#ed-add');
+    await expect(dock.locator('.plan-item .plan-status')).toHaveText('stays');
+    await dock.reload();
+    await expect(dock.locator('.plan-item .plan-status')).toHaveText('stays');
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#stage.has-logo')).toHaveCount(1);
+    await expect(overlay.locator('#ov-title')).toHaveText('Pastor John');
+  });
+
+  test('Edit shows the chosen picture and can switch to no picture', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await openEditor(dock);
+    await addPicture(dock);
+    await fillLowerThird(dock, { name: 'Pastor John' });
+    await dock.click('#ed-add');
+    await dock.locator('.plan-item .plan-more').click();
+    await dock.getByRole('button', { name: 'Edit' }).click();
+    await expect(dock.locator('#ed-lt-logo option:checked')).toHaveText('Picture from this computer');
+    await dock.selectOption('#ed-lt-logo', '');
+    await dock.click('#ed-add');
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#ov-title')).toHaveText('Pastor John');
+    await expect(overlay.locator('#stage.has-logo')).toHaveCount(0);
+  });
+
+  test('a file that is not a picture is refused with a message', async ({ context }) => {
     const { dock } = await openPair(context);
     await openEditor(dock);
-    await expect(dock.locator('#ed-lt-logo')).toBeDisabled();
-    await expect(dock.locator('#ed-lt-add-logo')).toBeDisabled();
-    await expect(dock.locator('#ed-lt-logo-hint')).toContainText('Choose a library folder');
+    await dock.setInputFiles('#ed-lt-file', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+    await expect(dock.locator('#ed-lt-logo-hint')).toContainText('not a picture');
+    await expect(dock.locator('#ed-lt-logo option:checked')).toHaveText('No picture');
   });
 
   test('a picture added through the folder is saved there and shown beside the text', async ({ context }) => {

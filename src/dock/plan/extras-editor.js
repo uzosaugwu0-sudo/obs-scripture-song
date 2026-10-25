@@ -1,7 +1,9 @@
 import { $ } from '../shared/util.js';
-import { announcementFromInputs, timerFromInputs, lowerThirdFromInputs } from '../../plan/extras.js';
+import { announcementFromInputs, timerFromInputs, lowerThirdFromInputs, MAX_ITEM_LOGO_DATA } from '../../plan/extras.js';
+import { encodeLogo, logoDataUrl } from './logo-store.js';
 
-const NO_FOLDER_HINT = 'Choose a library folder in Songs > Library tools to use pictures.';
+const NO_FOLDER_HINT = 'No library folder is connected, so the picture is kept inside this lower third.';
+const EMBEDDED = '@embedded';   // the drop-down value for a picture kept inside the lower third
 const NAMES = { announcement: 'announcement', timer: 'timer', lowerthird: 'lower third' };
 
 /**
@@ -24,11 +26,12 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
   let mode = 'duration';
   let align = 'left';
   let editingId = null;
+  let embedded = null;   // a picture chosen with no library folder: a small data URL kept inside the lower third
 
   function read() {
     if (type === 'announcement') return announcementFromInputs({ title: title.value, body: text.value });
     if (type === 'timer') return timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
-    return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value, hideAfter: ltHide.value });
+    return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value === EMBEDDED ? '' : ltLogo.value, logoData: ltLogo.value === EMBEDDED ? embedded : '', hideAfter: ltHide.value });
   }
 
   function setPressed(buttons, value) {
@@ -51,21 +54,21 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
     setPressed(alignButtons, align);
   }
 
-  /** The picture drop-down: No picture, the files in logos/, and a missing one the item still points at. */
+  /** The picture drop-down: No picture, a picture kept inside this lower third, the files in logos/, and a missing file it still points at. */
   function fillLogos(selected) {
     const names = logoStore.list();
-    const choices = selected && !names.includes(selected) ? [...names, selected] : names;
-    ltLogo.replaceChildren(...['', ...choices].map((name) => {
+    const choices = selected && selected !== EMBEDDED && !names.includes(selected) ? [...names, selected] : names;
+    const options = [{ value: '', label: 'No picture' }];
+    if (embedded) options.push({ value: EMBEDDED, label: 'Picture from this computer' });
+    choices.forEach((name) => options.push({ value: name, label: names.includes(name) ? name : name + ' (missing)' }));
+    ltLogo.replaceChildren(...options.map(({ value, label }) => {
       const option = document.createElement('option');
-      option.value = name;
-      option.textContent = name === '' ? 'No picture' : (names.includes(name) ? name : name + ' (missing)');
+      option.value = value;
+      option.textContent = label;
       return option;
     }));
     ltLogo.value = selected || '';
-    const usable = logoStore.available();
-    ltLogo.disabled = !usable;
-    ltAddLogo.disabled = !usable;
-    ltLogoHint.textContent = usable ? '' : NO_FOLDER_HINT;
+    ltLogoHint.textContent = logoStore.available() ? '' : NO_FOLDER_HINT;
   }
 
   function update() {
@@ -99,7 +102,8 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
     ltInfo.value = item && type === 'lowerthird' ? (item.info || '') : '';
     ltHide.value = item && type === 'lowerthird' && item.hideAfter ? String(item.hideAfter) : '';
     setAlign(item && type === 'lowerthird' && item.align ? item.align : 'left');
-    fillLogos(item && type === 'lowerthird' ? (item.logo || '') : '');
+    embedded = item && type === 'lowerthird' && item.logoData ? item.logoData : null;
+    fillLogos(embedded ? EMBEDDED : (item && type === 'lowerthird' ? (item.logo || '') : ''));
     btnAdd.textContent = item ? 'Save' : 'Add to plan';
     root.classList.remove('hidden');
     update();
@@ -117,8 +121,14 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
     ltFile.value = '';
     if (!file) return;
     try {
-      const name = await logoStore.add(file);
-      fillLogos(name);
+      if (logoStore.available()) {
+        fillLogos(await logoStore.add(file));
+      } else {
+        const url = logoDataUrl(await encodeLogo(file));
+        if (url.length > MAX_ITEM_LOGO_DATA) throw new Error('That picture is too detailed. Try a simpler one.');
+        embedded = url;
+        fillLogos(EMBEDDED);
+      }
       update();
     } catch (err) {
       ltLogoHint.textContent = err.message || 'That picture could not be added.';

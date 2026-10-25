@@ -74,5 +74,5 @@ export function replaceItem(plan, id, item) {
   return { ...plan, items: plan.items.map((i) => (i.id === id ? { ...item, id } : i)) };
 }
 
-export const lowerThirdItem = ({ name = '', info = '', align = 'left', logo = null, hideAfter = null }, uid = defaultUid) =>
-  ({ id: 'i_' + uid(), type: 'lowerthird', name: name.trim(), info: info.trim(), align, logo, hideAfter });
+export const lowerThirdItem = ({ name = '', info = '', align = 'left', logo = null, logoData = null, hideAfter = null }, uid = defaultUid) =>
+  ({ id: 'i_' + uid(), type: 'lowerthird', name: name.trim(), info: info.trim(), align, logo, logoData, hideAfter });
