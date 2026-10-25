@@ -1,7 +1,7 @@
-export const OFFLINE_TRANSLATIONS = Object.freeze(['KJV', 'WEB']);
+const OFFLINE_TRANSLATIONS = Object.freeze(['KJV', 'WEB']);
 
 /** Inject a classic script tag; resolves on load. Works over file:/// where fetch() does not. */
-export function loadScriptTag(src) {
+function loadScriptTag(src) {
   return new Promise((resolve, reject) => {
     const el = document.createElement('script');
     el.src = src;

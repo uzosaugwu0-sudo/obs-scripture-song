@@ -1,5 +1,5 @@
 export const STATE_VERSION = 1;
-export const ACTIONS = Object.freeze(['show', 'hide', 'clear']);
+const ACTIONS = Object.freeze(['show', 'hide', 'clear']);
 export const KINDS = Object.freeze(['verse', 'song', 'announcement', 'timer']);
 export const THEMES = Object.freeze(['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom']);
 export const ANIMATIONS = Object.freeze(['rise', 'wipe', 'lines', 'cut']);

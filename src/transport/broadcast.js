@@ -2,7 +2,7 @@ import { DEFAULTS, STATE_VERSION, nextSeq, normalizeState } from '../core/state.
 
 export const CHANNEL_NAME  = 'obs-stage-display';
 export const STATE_KEY     = 'obs-stage-display-state';
-export const POLL_INTERVAL = 80;
+const POLL_INTERVAL = 80;
 
 /**
  * Dock → overlay transport over BroadcastChannel, with a localStorage

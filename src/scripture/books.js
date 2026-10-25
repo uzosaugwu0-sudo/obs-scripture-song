@@ -74,19 +74,6 @@ export function bookIndexOf(name) {
   return hits.length === 1 ? hits[0] : -1;
 }
 
-/** Book names matching a typed prefix, for the autocomplete dropdown. */
-export function searchBooks(query) {
-  const q = (query || '').toLowerCase().trim();
-  if (!q) return [];
-  return BIBLE_BOOKS
-    .filter(([name, abbr]) =>
-      name.toLowerCase().startsWith(q) ||
-      abbr.toLowerCase().startsWith(q) ||
-      name.toLowerCase().includes(q))
-    .map(([name]) => name)
-    .slice(0, 8);
-}
-
 /** Lower-case a typed book name and normalise ordinals: "II Cor." becomes "2 cor". */
 export function normalizeBookName(name) {
   const n = (name || '').toLowerCase().trim().replace(/\.$/, '');

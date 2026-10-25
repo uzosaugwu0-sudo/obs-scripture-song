@@ -7,20 +7,20 @@ export const THEME_BG = {
 };
 
 // Base alpha multiplied by the opacity slider, so the default 88% gives 0.55 / 0.704 glass.
-export const THEME_ALPHA = { frosted: 0.625, 'frosted-light': 0.8 };
+const THEME_ALPHA = { frosted: 0.625, 'frosted-light': 0.8 };
 
 // Pure Type floats text on the video; every other theme starts with its card on.
 const CARD_DEFAULT = { frosted: true, 'frosted-light': true, pure: false, 'sacred-light': true, custom: true };
 
 // Body type scales with text length: short text large, long text small.
-export const SIZE_RANGE = {
+const SIZE_RANGE = {
   'fs-sm': { min: 26, max: 34 },
   'fs-md': { min: 34, max: 46 },
   'fs-lg': { min: 46, max: 58 },
   'fs-xl': { min: 58, max: 72 },
 };
-export const SHORT_LEN = 80;
-export const LONG_LEN  = 220;
+const SHORT_LEN = 80;
+const LONG_LEN  = 220;
 
 // Baselines the Overlay Scale slider multiplies
 export const MIN_HEIGHT_VH = { 'fs-sm': 18, 'fs-md': 24, 'fs-lg': 32, 'fs-xl': 42 };

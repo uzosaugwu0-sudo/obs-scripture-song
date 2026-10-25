@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BIBLE_BOOKS, bookIndexOf, searchBooks } from '../../src/scripture/books.js';
+import { BIBLE_BOOKS, bookIndexOf } from '../../src/scripture/books.js';
 
 const nameOf = (input) => {
   const i = bookIndexOf(input);
@@ -23,16 +23,6 @@ describe('bookIndexOf', () => {
     expect(bookIndexOf('')).toBe(-1);
     expect(bookIndexOf(undefined)).toBe(-1);
     expect(bookIndexOf('Hezekiah')).toBe(-1);
-  });
-});
-
-describe('searchBooks', () => {
-  it('returns prefix matches first and caps results at 8', () => {
-    expect(searchBooks('joh')[0]).toBe('John');
-    expect(searchBooks('a').length).toBeLessThanOrEqual(8);
-  });
-  it('returns nothing for an empty query', () => {
-    expect(searchBooks('')).toEqual([]);
   });
 });
 
