@@ -2,7 +2,7 @@
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
-  var KINDS = Object.freeze(["verse", "song"]);
+  var KINDS = Object.freeze(["verse", "song", "announcement", "timer"]);
   var THEMES = Object.freeze(["frosted", "frosted-light", "pure", "sacred-light", "custom"]);
   var ANIMATIONS = Object.freeze(["rise", "wipe", "lines", "cut"]);
   var DEFAULTS = Object.freeze({
@@ -15,6 +15,8 @@
     // verse text or slide lines
     reference: "",
     // scripture reference
+    timer: null,
+    // timer kind only: { endAt } while running, { remainingMs } while paused
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -48,6 +50,11 @@
   function nextSeq(lastSeq, nowMs) {
     return Math.max(lastSeq + 1, nowMs);
   }
+  function validTimer(timer) {
+    if (!timer || typeof timer !== "object") return false;
+    if (typeof timer.endAt === "number") return Number.isFinite(timer.endAt);
+    return typeof timer.remainingMs === "number" && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0;
+  }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
     if (typeof raw.version === "number" && raw.version > STATE_VERSION) return null;
@@ -58,6 +65,7 @@
     };
     if (!ACTIONS.includes(merged.action)) return null;
     if (!KINDS.includes(merged.kind)) return null;
+    if (merged.kind === "timer" && merged.action !== "clear" && !validTimer(merged.timer)) return null;
     return { ...merged, ...migrateLegacy(merged) };
   }
 
@@ -266,8 +274,27 @@
     return grouped;
   }
 
+  // src/overlay/timer-clock.js
+  var STALE_AFTER_MS = 36e5;
+  function remainingMs(timer, now) {
+    if (typeof timer.endAt === "number") return Math.max(0, timer.endAt - now);
+    return Math.max(0, timer.remainingMs || 0);
+  }
+  function formatClock(ms) {
+    const total = Math.ceil(Math.max(0, ms) / 1e3);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor(total % 3600 / 60);
+    const seconds = total % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return hours > 0 ? hours + ":" + pad(minutes) + ":" + pad(seconds) : minutes + ":" + pad(seconds);
+  }
+  var isRunning = (timer) => typeof timer.endAt === "number";
+  function isStale(timer, now) {
+    return isRunning(timer) && now - timer.endAt > STALE_AFTER_MS;
+  }
+
   // src/overlay/render.js
-  var KIND_CLASSES = ["kind-verse", "kind-song"];
+  var KIND_CLASSES = ["kind-verse", "kind-song", "kind-announcement", "kind-timer"];
   var THEME_CLASSES = ["theme-frosted", "theme-frosted-light", "theme-pure", "theme-sacred-light", "theme-custom"];
   var POS_CLASSES = ["pos-bottom", "pos-center", "pos-top"];
   var SIZE_CLASSES = ["fs-sm", "fs-md", "fs-lg", "fs-xl"];
@@ -281,6 +308,8 @@
   var TEXT_IN_MS = 340;
   var MAX_STAGGER_S = 0.35;
   var LINES_BUDGET_S = 2.4;
+  var TIMER_TICK_MS = 250;
+  var TIMER_SCALE = 1.6;
   function createRenderer(doc = document, onError = () => {
   }) {
     const stage = doc.getElementById("stage");
@@ -290,6 +319,7 @@
     const bodyEl = doc.getElementById("ov-body");
     const refEl = doc.getElementById("ov-ref");
     let epoch = 0;
+    let tickHandle = null;
     function setClass(group, value) {
       group.forEach((c) => stage.classList.remove(c));
       stage.classList.add(value);
@@ -313,8 +343,26 @@
       timer = setTimeout(finish, fallbackMs);
       el.addEventListener("animationend", onEnd);
     }
+    function stopTick() {
+      if (tickHandle !== null) {
+        clearInterval(tickHandle);
+        tickHandle = null;
+      }
+    }
+    function paintClock(timer) {
+      bodyEl.textContent = formatClock(remainingMs(timer, Date.now()));
+    }
+    function startTick(timer) {
+      stopTick();
+      paintClock(timer);
+      if (typeof timer.endAt !== "number") return;
+      tickHandle = setInterval(() => {
+        paintClock(timer);
+        if (remainingMs(timer, Date.now()) === 0) stopTick();
+      }, TIMER_TICK_MS);
+    }
     function applyStyles(state) {
-      const kind = state.kind === "song" ? "song" : "verse";
+      const kind = state.kind;
       const theme = state.theme;
       const opacityPct = state.opacity !== void 0 ? state.opacity : 88;
       const font = state.font || "Open Sans";
@@ -363,7 +411,7 @@
       }
       card.style.fontFamily = "'" + font + "', 'Open Sans', Georgia, serif";
       bodyEl.style.fontStyle = state.italic ? "italic" : "normal";
-      const hideTitle = kind !== "song" || state.showTitle === false;
+      const hideTitle = kind === "verse" || state.showTitle === false || kind !== "song" && !state.title;
       const hideRef = kind !== "verse" || state.showReference === false;
       titleEl.style.display = hideTitle ? "none" : "";
       refEl.style.display = hideRef ? "none" : "";
@@ -382,13 +430,19 @@
       bodyEl.style.fontSize = computeBodyFontSize(text, sizeClass, scale) + "px";
     }
     function fillContent(state) {
-      const isSong = state.kind === "song";
-      titleEl.textContent = isSong ? state.title || "" : "";
-      refEl.textContent = isSong ? "" : state.reference || "";
+      const titled = state.kind !== "verse";
+      titleEl.textContent = titled ? state.title || "" : "";
+      refEl.textContent = state.kind === "verse" ? state.reference || "" : "";
       const body = state.body || "";
-      bodyEl.setAttribute("aria-label", body);
+      bodyEl.setAttribute("aria-label", state.kind === "timer" ? state.title || "Timer" : body);
+      if (state.kind === "timer") {
+        paintClock(state.timer);
+        bodyEl.style.removeProperty("--stagger");
+        bodyEl.style.fontSize = Math.round(computeBodyFontSize("", "fs-" + (state.fontSize || "md"), getScale(state)) * TIMER_SCALE) + "px";
+        return;
+      }
       if (state.animation === "lines") {
-        const lines = splitLines(body, state.kind);
+        const lines = splitLines(body, state.kind === "verse" ? "verse" : "song");
         bodyEl.textContent = "";
         lines.forEach((text, i) => {
           const span = doc.createElement("span");
@@ -417,6 +471,7 @@
         applyStyles(state);
         fillContent(state);
         stage.classList.remove("hidden");
+        if (state.kind === "timer") startTick(state.timer);
       };
       CARD_STATES.forEach((c) => card.classList.remove(c));
       TEXT_STATES.forEach((c) => wrap.classList.remove(c));
@@ -445,6 +500,7 @@
       if (stage.classList.contains("hidden")) return;
       const anim = state.animation;
       const finish = () => {
+        stopTick();
         CARD_STATES.forEach((c) => card.classList.remove(c));
         TEXT_STATES.forEach((c) => wrap.classList.remove(c));
         stage.classList.add("hidden");
@@ -458,6 +514,7 @@
       play(card, "card-out", CARD_STATES, LEAVE_MS[anim], token, finish);
     }
     function clear() {
+      stopTick();
       CARD_STATES.forEach((c) => card.classList.remove(c));
       TEXT_STATES.forEach((c) => wrap.classList.remove(c));
       stage.classList.remove("lines-go");
@@ -470,7 +527,9 @@
       try {
         const state = normalizeState(raw);
         if (!state) return;
+        if (state.action === "show" && state.kind === "timer" && isStale(state.timer, Date.now())) return;
         epoch += 1;
+        stopTick();
         const token = epoch;
         switch (state.action) {
           case "show":

@@ -116,7 +116,7 @@
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
-  var KINDS = Object.freeze(["verse", "song"]);
+  var KINDS = Object.freeze(["verse", "song", "announcement", "timer"]);
   var THEMES = Object.freeze(["frosted", "frosted-light", "pure", "sacred-light", "custom"]);
   var ANIMATIONS = Object.freeze(["rise", "wipe", "lines", "cut"]);
   var DEFAULTS = Object.freeze({
@@ -129,6 +129,8 @@
     // verse text or slide lines
     reference: "",
     // scripture reference
+    timer: null,
+    // timer kind only: { endAt } while running, { remainingMs } while paused
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -162,6 +164,11 @@
   function nextSeq(lastSeq, nowMs) {
     return Math.max(lastSeq + 1, nowMs);
   }
+  function validTimer(timer) {
+    if (!timer || typeof timer !== "object") return false;
+    if (typeof timer.endAt === "number") return Number.isFinite(timer.endAt);
+    return typeof timer.remainingMs === "number" && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0;
+  }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
     if (typeof raw.version === "number" && raw.version > STATE_VERSION) return null;
@@ -172,6 +179,7 @@
     };
     if (!ACTIONS.includes(merged.action)) return null;
     if (!KINDS.includes(merged.kind)) return null;
+    if (merged.kind === "timer" && merged.action !== "clear" && !validTimer(merged.timer)) return null;
     return { ...merged, ...migrateLegacy(merged) };
   }
 

@@ -4,8 +4,9 @@ import {
   hexToRgba, getScale, computeBodyFontSize, cardAlpha,
 } from './style-math.js';
 import { splitLines } from './split-lines.js';
+import { remainingMs, formatClock, isStale } from './timer-clock.js';
 
-const KIND_CLASSES  = ['kind-verse', 'kind-song'];
+const KIND_CLASSES  = ['kind-verse', 'kind-song', 'kind-announcement', 'kind-timer'];
 const THEME_CLASSES = ['theme-frosted', 'theme-frosted-light', 'theme-pure', 'theme-sacred-light', 'theme-custom'];
 const POS_CLASSES   = ['pos-bottom', 'pos-center', 'pos-top'];
 const SIZE_CLASSES  = ['fs-sm', 'fs-md', 'fs-lg', 'fs-xl'];
@@ -21,6 +22,8 @@ const TEXT_OUT_MS = 240;
 const TEXT_IN_MS  = 340;
 const MAX_STAGGER_S  = 0.35;
 const LINES_BUDGET_S = 2.4;
+const TIMER_TICK_MS = 250;
+const TIMER_SCALE   = 1.6;   // the digits are set a little larger than body text
 
 export function createRenderer(doc = document, onError = () => {}) {
   const stage   = doc.getElementById('stage');
@@ -34,6 +37,7 @@ export function createRenderer(doc = document, onError = () => {}) {
   // last command always wins and an interrupted animation cannot leave the
   // overlay hidden over new text or half faded.
   let epoch = 0;
+  let tickHandle = null;   // the digits interval; any command cancels it
 
   function setClass(group, value) {
     group.forEach((c) => stage.classList.remove(c));
@@ -59,8 +63,27 @@ export function createRenderer(doc = document, onError = () => {}) {
     el.addEventListener('animationend', onEnd);
   }
 
+  function stopTick() {
+    if (tickHandle !== null) { clearInterval(tickHandle); tickHandle = null; }
+  }
+
+  function paintClock(timer) {
+    bodyEl.textContent = formatClock(remainingMs(timer, Date.now()));
+  }
+
+  /** Update only the digits, every TIMER_TICK_MS. A paused timer is painted once and never ticks. */
+  function startTick(timer) {
+    stopTick();
+    paintClock(timer);
+    if (typeof timer.endAt !== 'number') return;
+    tickHandle = setInterval(() => {
+      paintClock(timer);
+      if (remainingMs(timer, Date.now()) === 0) stopTick();
+    }, TIMER_TICK_MS);
+  }
+
   function applyStyles(state) {
-    const kind       = state.kind === 'song' ? 'song' : 'verse';
+    const kind       = state.kind;
     const theme      = state.theme;
     const opacityPct = state.opacity !== undefined ? state.opacity : 88;
     const font       = state.font || 'Open Sans';
@@ -118,7 +141,7 @@ export function createRenderer(doc = document, onError = () => {}) {
     card.style.fontFamily  = "'" + font + "', 'Open Sans', Georgia, serif";
     bodyEl.style.fontStyle = state.italic ? 'italic' : 'normal';
 
-    const hideTitle = kind !== 'song'  || state.showTitle === false;
+    const hideTitle = kind === 'verse' || state.showTitle === false || (kind !== 'song' && !state.title);
     const hideRef   = kind !== 'verse' || state.showReference === false;
     titleEl.style.display = hideTitle ? 'none' : '';
     refEl.style.display   = hideRef   ? 'none' : '';
@@ -141,14 +164,20 @@ export function createRenderer(doc = document, onError = () => {}) {
   }
 
   function fillContent(state) {
-    const isSong = state.kind === 'song';
-    titleEl.textContent = isSong ? (state.title || '') : '';
-    refEl.textContent   = isSong ? '' : (state.reference || '');
+    const titled = state.kind !== 'verse';
+    titleEl.textContent = titled ? (state.title || '') : '';
+    refEl.textContent   = state.kind === 'verse' ? (state.reference || '') : '';
     const body = state.body || '';
-    bodyEl.setAttribute('aria-label', body);
+    bodyEl.setAttribute('aria-label', state.kind === 'timer' ? (state.title || 'Timer') : body);
 
+    if (state.kind === 'timer') {
+      paintClock(state.timer);
+      bodyEl.style.removeProperty('--stagger');
+      bodyEl.style.fontSize = Math.round(computeBodyFontSize('', 'fs-' + (state.fontSize || 'md'), getScale(state)) * TIMER_SCALE) + 'px';
+      return;
+    }
     if (state.animation === 'lines') {
-      const lines = splitLines(body, state.kind);
+      const lines = splitLines(body, state.kind === 'verse' ? 'verse' : 'song');
       bodyEl.textContent = '';
       lines.forEach((text, i) => {
         const span = doc.createElement('span');
@@ -179,6 +208,7 @@ export function createRenderer(doc = document, onError = () => {}) {
       applyStyles(state);
       fillContent(state);
       stage.classList.remove('hidden');
+      if (state.kind === 'timer') startTick(state.timer);
     };
 
     // A hide may have been in flight: put the card back before anything else.
@@ -206,6 +236,7 @@ export function createRenderer(doc = document, onError = () => {}) {
     if (stage.classList.contains('hidden')) return;
     const anim = state.animation;
     const finish = () => {
+      stopTick();
       CARD_STATES.forEach((c) => card.classList.remove(c));
       TEXT_STATES.forEach((c) => wrap.classList.remove(c));
       stage.classList.add('hidden');
@@ -217,6 +248,7 @@ export function createRenderer(doc = document, onError = () => {}) {
   }
 
   function clear() {
+    stopTick();
     CARD_STATES.forEach((c) => card.classList.remove(c));
     TEXT_STATES.forEach((c) => wrap.classList.remove(c));
     stage.classList.remove('lines-go');
@@ -230,7 +262,9 @@ export function createRenderer(doc = document, onError = () => {}) {
     try {
       const state = normalizeState(raw);
       if (!state) return;                       // hostile, newer or unknown kind: render nothing
+      if (state.action === 'show' && state.kind === 'timer' && isStale(state.timer, Date.now())) return;   // a restored leftover
       epoch += 1;
+      stopTick();
       const token = epoch;
       switch (state.action) {
         case 'show':  show(state, token);  break;
