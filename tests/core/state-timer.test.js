@@ -3,7 +3,7 @@ import { KINDS, DEFAULTS, normalizeState } from '../../src/core/state.js';
 
 describe('announcement and timer kinds', () => {
   it('lists the new kinds and defaults the timer field to null', () => {
-    expect(KINDS).toEqual(['verse', 'song', 'announcement', 'timer']);
+    expect(KINDS).toEqual(['verse', 'song', 'announcement', 'timer', 'lowerthird']);
     expect(DEFAULTS.timer).toBeNull();
   });
 
