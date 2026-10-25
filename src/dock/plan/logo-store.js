@@ -41,26 +41,51 @@ async function listNames(dir) {
 }
 
 /**
- * The pictures for lower thirds: PNG files in logos/ inside the library folder.
- * The overlay cannot read the folder, so the dock reads a picture here and sends
- * it inline with the lower third.
+ * The pictures for lower thirds. They come from a picture folder the person
+ * chose once anywhere on the PC, or else from logos/ inside the library folder.
+ * The overlay cannot read either, so the dock reads a picture here, shrinks it,
+ * and sends it inline with the lower third.
  */
 export function createLogoStore({ onError = () => {}, encode = encodeLogo } = {}) {
-  let dir = null;
+  let libraryDir = null;   // logos/ inside the library folder, the fallback
+  let pictureDir = null;   // the folder the person chose, used first
   let names = [];
 
+  const active = () => pictureDir || libraryDir;
+
+  /** Look at the folder again, so pictures added outside the app show up. */
+  async function refresh() {
+    const dir = active();
+    try {
+      names = dir ? await listNames(dir) : [];
+    } catch (err) {
+      onError(err);
+      names = [];
+    }
+  }
+
   return {
-    async attach(dirHandle) {
-      const logos = await dirHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
-      names = await listNames(logos);
-      dir = logos;
+    async attach(libraryHandle) {
+      libraryDir = await libraryHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
+      await refresh();
     },
-    detach() { dir = null; names = []; },
-    available: () => dir !== null,
+    detach() {
+      libraryDir = null;
+      if (!pictureDir) names = [];
+    },
+    /** Use a folder chosen by the person (null goes back to the library folder). */
+    async usePictureFolder(handle) {
+      pictureDir = handle;
+      await refresh();
+    },
+    pictureFolderName: () => (pictureDir ? pictureDir.name : ''),
+    refresh,
+    available: () => active() !== null,
     list: () => names.slice(),
     has: (name) => names.includes(name),
     async add(file) {
-      if (!dir) throw new Error('Choose a library folder first.');
+      const dir = active();
+      if (!dir) throw new Error('Choose a picture folder first.');
       const bytes = await encode(file);
       const name = logoFileName(file.name, names);
       await writeFileAtomic(dir, name, bytes);
@@ -68,11 +93,11 @@ export function createLogoStore({ onError = () => {}, encode = encodeLogo } = {}
       return name;
     },
     async read(name) {
+      const dir = active();
       if (!dir || !isValidLogoName(name)) return null;
       try {
         const handle = await dir.getFileHandle(name);
-        const file = await handle.getFile();
-        return logoDataUrl(new Uint8Array(await file.arrayBuffer()));
+        return logoDataUrl(await encode(await handle.getFile()));
       } catch (err) {
         if (err.name !== 'NotFoundError') onError(err);
         return null;

@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { isValidLogoName, logoFileName, fitSize, LOGO_MAX_SIDE } from '../../src/plan/logos.js';
 
 describe('isValidLogoName', () => {
-  it('accepts a plain .png file name', () => {
-    ['a.png', 'pastor_john.png', 'pastor_john (2).png', 'Church Logo.PNG'].forEach((n) => expect(isValidLogoName(n)).toBe(true));
+  it('accepts a plain image file name', () => {
+    ['a.png', 'pastor_john.png', 'pastor_john (2).png', 'Church Logo.PNG', 'photo.jpg', 'photo.JPEG', 'a.webp', 'a.gif', 'x'.repeat(100) + '.png'].forEach((n) => expect(isValidLogoName(n)).toBe(true));
   });
   it('rejects folders, other types, hidden names and non-text', () => {
-    ['a/b.png', 'a\\b.png', '../a.png', 'a..png', 'a.jpg', 'a.png.exe', '.png', '', 'x'.repeat(90) + '.png', null, undefined, 5].forEach((n) => expect(isValidLogoName(n)).toBe(false));
+    ['a/b.png', 'a\\b.png', '../a.png', 'a..png', 'a.bmp', 'a.svg', 'a.png.exe', '.png', '', 'x'.repeat(130) + '.png', null, undefined, 5].forEach((n) => expect(isValidLogoName(n)).toBe(false));
   });
 });
 

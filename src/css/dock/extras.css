@@ -12,3 +12,5 @@
 
 #ed-lt-align { margin: 4px 0; }
 #ed-lt-logo { min-width: 0; }
+#ed-lt-folder-row { align-items: center; }
+#ed-lt-folder-name { min-width: 0; overflow-wrap: anywhere; }

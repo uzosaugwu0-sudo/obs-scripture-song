@@ -2895,7 +2895,7 @@ ${DELIMITER}
 
   // src/plan/logos.js
   var LOGO_MAX_SIDE = 160;
-  var LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,80}\.png$/i;
+  var LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,120}\.(png|jpe?g|webp|gif)$/i;
   var isValidLogoName = (name) => typeof name === "string" && LOGO_NAME.test(name) && !name.startsWith(".") && !name.includes("..");
   function logoFileName(sourceName, taken) {
     const stem = (sourceName || "").replace(/\.[^.]*$/, "").replace(/\./g, "_");
@@ -3075,23 +3075,41 @@ ${DELIMITER}
   }
   function createLogoStore({ onError = () => {
   }, encode = encodeLogo } = {}) {
-    let dir = null;
+    let libraryDir = null;
+    let pictureDir = null;
     let names = [];
+    const active = () => pictureDir || libraryDir;
+    async function refresh() {
+      const dir = active();
+      try {
+        names = dir ? await listNames(dir) : [];
+      } catch (err) {
+        onError(err);
+        names = [];
+      }
+    }
     return {
-      async attach(dirHandle) {
-        const logos = await dirHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
-        names = await listNames(logos);
-        dir = logos;
+      async attach(libraryHandle) {
+        libraryDir = await libraryHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
+        await refresh();
       },
       detach() {
-        dir = null;
-        names = [];
+        libraryDir = null;
+        if (!pictureDir) names = [];
       },
-      available: () => dir !== null,
+      /** Use a folder chosen by the person (null goes back to the library folder). */
+      async usePictureFolder(handle) {
+        pictureDir = handle;
+        await refresh();
+      },
+      pictureFolderName: () => pictureDir ? pictureDir.name : "",
+      refresh,
+      available: () => active() !== null,
       list: () => names.slice(),
       has: (name) => names.includes(name),
       async add(file) {
-        if (!dir) throw new Error("Choose a library folder first.");
+        const dir = active();
+        if (!dir) throw new Error("Choose a picture folder first.");
         const bytes = await encode(file);
         const name = logoFileName(file.name, names);
         await writeFileAtomic(dir, name, bytes);
@@ -3099,11 +3117,11 @@ ${DELIMITER}
         return name;
       },
       async read(name) {
+        const dir = active();
         if (!dir || !isValidLogoName(name)) return null;
         try {
           const handle = await dir.getFileHandle(name);
-          const file = await handle.getFile();
-          return logoDataUrl(new Uint8Array(await file.arrayBuffer()));
+          return logoDataUrl(await encode(await handle.getFile()));
         } catch (err) {
           if (err.name !== "NotFoundError") onError(err);
           return null;
@@ -3113,11 +3131,11 @@ ${DELIMITER}
   }
 
   // src/dock/plan/extras-editor.js
-  var NO_FOLDER_HINT = "No library folder is connected, so the picture is kept inside this lower third.";
+  var NO_FOLDER_HINT = "No picture folder is chosen, so a picture you add is kept inside this lower third.";
   var EMBEDDED = "@embedded";
   var NAMES = { announcement: "announcement", timer: "timer", lowerthird: "lower third" };
-  function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
-    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
+  function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow }) {
+    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), ltFolderName = $("ed-lt-folder-name"), ltChooseFolder = $("ed-lt-choose-folder"), ltReconnect = $("ed-lt-reconnect"), ltForgetFolder = $("ed-lt-forget-folder"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
     let type = "announcement";
     let mode = "duration";
     let align = "left";
@@ -3160,6 +3178,20 @@ ${DELIMITER}
       ltLogo.value = selected || "";
       ltLogoHint.textContent = logoStore.available() ? "" : NO_FOLDER_HINT;
     }
+    function renderFolder() {
+      const { state, name } = pictureFolder.status();
+      ltFolderName.textContent = state === "none" ? "No picture folder chosen." : "Picture folder: " + name + (state === "needs-permission" ? " (needs your OK)" : "");
+      ltChooseFolder.classList.toggle("hidden", !pictureFolder.supported());
+      ltChooseFolder.textContent = state === "none" ? "Choose picture folder..." : "Change...";
+      ltReconnect.classList.toggle("hidden", state !== "needs-permission");
+      ltForgetFolder.classList.toggle("hidden", state === "none");
+    }
+    async function refreshLogos() {
+      await logoStore.refresh();
+      fillLogos(ltLogo.value || "");
+      renderFolder();
+      update();
+    }
     function update() {
       const result = read();
       hint.textContent = result.ok ? "" : result.hint;
@@ -3191,6 +3223,10 @@ ${DELIMITER}
       setAlign(item && type === "lowerthird" && item.align ? item.align : "left");
       embedded = item && type === "lowerthird" && item.logoData ? item.logoData : null;
       fillLogos(embedded ? EMBEDDED : item && type === "lowerthird" ? item.logo || "" : "");
+      if (type === "lowerthird") {
+        renderFolder();
+        refreshLogos();
+      }
       btnAdd.textContent = item ? "Save" : "Add to plan";
       root.classList.remove("hidden");
       update();
@@ -3206,6 +3242,21 @@ ${DELIMITER}
       setAlign(button.dataset.value);
       update();
     }));
+    ltChooseFolder.addEventListener("click", async () => {
+      try {
+        if (await pictureFolder.choose()) await refreshLogos();
+      } catch {
+        ltLogoHint.textContent = "That folder could not be opened.";
+      }
+    });
+    ltReconnect.addEventListener("click", async () => {
+      await pictureFolder.reconnect();
+      await refreshLogos();
+    });
+    ltForgetFolder.addEventListener("click", async () => {
+      await pictureFolder.forget();
+      await refreshLogos();
+    });
     ltAddLogo.addEventListener("click", () => ltFile.click());
     ltFile.addEventListener("change", async () => {
       const file = ltFile.files[0];
@@ -3261,7 +3312,7 @@ ${DELIMITER}
     if (text !== void 0) el.textContent = text;
     return el;
   }
-  function initPlanTab({ session, store, library, tabs, logoStore, setStatus, showView, refresh, report: report2 }) {
+  function initPlanTab({ session, store, library, tabs, logoStore, pictureFolder, setStatus, showView, refresh, report: report2 }) {
     const select = $("plan-select"), listEl = $("plan-list"), banner = $("plan-banner"), unreadableEl = $("plan-unreadable"), btnMenu = $("btn-plan-menu"), menu = $("plan-menu"), picker = $("picker-banner"), pickerText = $("picker-text"), btnNext = $("btn-next-item");
     let plan = store.get(store.lastId()) || store.list()[0] || createPlan();
     let currentId = null;
@@ -3306,6 +3357,7 @@ ${DELIMITER}
     }
     const editor = initExtrasEditor({
       logoStore,
+      pictureFolder,
       onAdd: (draft) => {
         edit((p) => addItem(p, draftItem(draft), currentId));
         setStatus("Added " + (draft.title || draft.type) + " to the plan.", "success");
@@ -3801,6 +3853,82 @@ ${DELIMITER}
     return { announcement: announcementTab, timer: timerTab, lowerthird: lowerThirdTab };
   }
 
+  // src/dock/plan/picture-folder.js
+  var PICKER_ID2 = "obs-pictures";
+  function createPictureFolder({
+    logoStore,
+    kv,
+    report: report2 = () => {
+    },
+    onChange = () => {
+    },
+    canPick = () => typeof window !== "undefined" && typeof window.showDirectoryPicker === "function",
+    showPicker = (options) => window.showDirectoryPicker(options)
+  }) {
+    let handle = null;
+    let state = "none";
+    async function activate(chosen) {
+      handle = chosen;
+      await logoStore.usePictureFolder(chosen);
+      state = "ready";
+      onChange();
+    }
+    return {
+      supported: canPick,
+      status: () => ({ state, name: handle ? handle.name : "" }),
+      /** Ask for a folder. False when the person closes the chooser without picking one. */
+      async choose() {
+        let chosen;
+        try {
+          chosen = await showPicker({ id: PICKER_ID2, mode: "readwrite" });
+        } catch (err) {
+          if (err.name === "AbortError") return false;
+          report2(err);
+          throw err;
+        }
+        await saveHandle(kv, chosen);
+        await activate(chosen);
+        return true;
+      },
+      /** At startup: use the remembered folder if access is still granted, else wait for a click. */
+      async restore() {
+        try {
+          const remembered = await loadHandle(kv);
+          if (!remembered) return;
+          handle = remembered;
+          if (await ensurePermission(remembered)) await activate(remembered);
+          else {
+            state = "needs-permission";
+            onChange();
+          }
+        } catch (err) {
+          report2(err);
+          handle = null;
+          state = "none";
+        }
+      },
+      /** Ask the browser for access again. Must run from a click. */
+      async reconnect() {
+        if (!handle) return false;
+        try {
+          if (!await ensurePermission(handle, { request: true })) return false;
+          await activate(handle);
+          return true;
+        } catch (err) {
+          report2(err);
+          return false;
+        }
+      },
+      async forget() {
+        handle = null;
+        state = "none";
+        await saveHandle(kv, null);
+        await logoStore.usePictureFolder(null);
+        onChange();
+      }
+    };
+  }
+
   // src/dock/main.js
   var diagnostics = createDiagnostics();
   var report = (context) => (err) => diagnostics.log(context, err);
@@ -3855,6 +3983,14 @@ ${DELIMITER}
       });
       liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
       const logoStore = createLogoStore({ onError: report("logos") });
+      const pictureFolder = createPictureFolder({
+        logoStore,
+        kv: openKv("obs-stage-pictures"),
+        report: report("pictures"),
+        onChange: () => {
+          if (tabs.plan) tabs.plan.render();
+        }
+      });
       const extras = initExtrasTab({ session, refresh: () => liveBar.refresh(), logoStore });
       tabs.announcement = extras.announcement;
       tabs.timer = extras.timer;
@@ -3908,6 +4044,7 @@ ${DELIMITER}
         library,
         tabs,
         logoStore,
+        pictureFolder,
         setStatus: status.setStatus,
         showView,
         refresh: () => liveBar.refresh(),
@@ -3942,6 +4079,7 @@ ${DELIMITER}
       initStyleTab({ session, store, setStatus: status.setStatus, report: report("settings") });
       transport.start();
       showView("plan");
+      pictureFolder.restore();
       await libraryTools.restore();
     } catch (err) {
       diagnostics.log("dock init", err);

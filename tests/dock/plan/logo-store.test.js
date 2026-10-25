@@ -30,7 +30,7 @@ describe('attach, list and has', () => {
     sub.files.set('b.png', bytes(1));
     sub.files.set('a.png', bytes(1));
     sub.files.set('notes.txt', 'x');
-    sub.files.set('photo.jpg', bytes(1));
+    sub.files.set('photo.bmp', bytes(1));
     await store.attach(dir);
     expect(store.list()).toEqual(['a.png', 'b.png']);
     expect(store.has('a.png')).toBe(true);
@@ -77,7 +77,7 @@ describe('add', () => {
 
   it('refuses without a folder, and passes on an encoder error unchanged', async () => {
     const none = createLogoStore();
-    await expect(none.add(file('a.png'))).rejects.toThrow('library folder');
+    await expect(none.add(file('a.png'))).rejects.toThrow('picture folder');
     const { dir, sub, store } = await setup({ encode: async () => { throw new Error('That file is not a picture.'); } });
     await store.attach(dir);
     await expect(store.add(file('a.txt'))).rejects.toThrow('That file is not a picture.');
@@ -87,11 +87,11 @@ describe('add', () => {
 });
 
 describe('read', () => {
-  it('returns the picture as a PNG data URL', async () => {
+  it('returns the picture, shrunk by the encoder, as a PNG data URL', async () => {
     const { dir, sub, store } = await setup();
     sub.files.set('a.png', bytes(137, 80, 78, 71));
     await store.attach(dir);
-    expect(await store.read('a.png')).toBe(dataUrl(137, 80, 78, 71));
+    expect(await store.read('a.png')).toBe(dataUrl(1, 2, 3));
   });
 
   it('returns null for a missing file without reporting an error', async () => {
@@ -105,7 +105,7 @@ describe('read', () => {
     const { dir, sub, store } = await setup();
     await store.attach(dir);
     sub.getFileHandle = vi.fn();
-    for (const bad of ['../a.png', 'a/b.png', 'a.jpg', '', null]) expect(await store.read(bad)).toBeNull();
+    for (const bad of ['../a.png', 'a/b.png', 'a.bmp', '', null]) expect(await store.read(bad)).toBeNull();
     expect(sub.getFileHandle).not.toHaveBeenCalled();
   });
 
@@ -115,6 +115,74 @@ describe('read', () => {
     await store.attach(dir);
     sub.denied = true;
     expect(await store.read('a.png')).toBeNull();
+    expect(errors).toHaveLength(1);
+  });
+});
+
+describe('a picture folder chosen anywhere on the PC', () => {
+  const pictureDir = (files = {}) => createFakeDir(files);
+
+  it('lists the images in it, ignoring other files and folders, and is available without a library folder', async () => {
+    const { store } = await setup();
+    const pics = pictureDir({ 'b.jpg': bytes(1), 'a.png': bytes(1), 'c.webp': bytes(1), 'd.gif': bytes(1), 'notes.txt': 'x', 'logo.bmp': bytes(1) });
+    await pics.getDirectoryHandle('sub', { create: true });
+    expect(store.available()).toBe(false);
+    await store.usePictureFolder(pics);
+    expect(store.available()).toBe(true);
+    expect(store.list()).toEqual(['a.png', 'b.jpg', 'c.webp', 'd.gif']);
+    expect(store.has('b.jpg')).toBe(true);
+    expect(store.pictureFolderName()).toBe('songs');
+  });
+
+  it('is used instead of the library logos folder, and the library folder is the fallback again when it is cleared', async () => {
+    const { dir, sub, store } = await setup();
+    sub.files.set('lib.png', bytes(1));
+    await store.attach(dir);
+    expect(store.list()).toEqual(['lib.png']);
+    await store.usePictureFolder(pictureDir({ 'pic.png': bytes(1) }));
+    expect(store.list()).toEqual(['pic.png']);
+    await store.usePictureFolder(null);
+    expect(store.list()).toEqual(['lib.png']);
+    expect(store.pictureFolderName()).toBe('');
+  });
+
+  it('reads a picture from it through the encoder, without copying it', async () => {
+    const { store } = await setup();
+    const pics = pictureDir({ 'big.jpg': bytes(9, 9, 9) });
+    const encode = vi.fn(async () => bytes(7, 7));
+    const own = createLogoStore({ encode });
+    await own.usePictureFolder(pics);
+    expect(await own.read('big.jpg')).toBe(dataUrl(7, 7));
+    expect(encode).toHaveBeenCalledTimes(1);
+    expect([...pics.files.keys()]).toEqual(['big.jpg']);
+    expect(store.available()).toBe(false);
+  });
+
+  it('adds a new picture into the chosen folder', async () => {
+    const { store } = await setup();
+    const pics = pictureDir();
+    await store.usePictureFolder(pics);
+    expect(await store.add(file('Church Logo.jpg'))).toBe('Church_Logo.png');
+    expect(pics.files.has('Church_Logo.png')).toBe(true);
+    expect(store.list()).toEqual(['Church_Logo.png']);
+  });
+
+  it('refresh picks up files added in the folder outside the app', async () => {
+    const { store } = await setup();
+    const pics = pictureDir({ 'a.png': bytes(1) });
+    await store.usePictureFolder(pics);
+    pics.files.set('new.png', bytes(1));
+    expect(store.list()).toEqual(['a.png']);
+    await store.refresh();
+    expect(store.list()).toEqual(['a.png', 'new.png']);
+  });
+
+  it('a folder that cannot be read lists nothing and reports the error', async () => {
+    const { store, errors } = await setup();
+    const pics = pictureDir({ 'a.png': bytes(1) });
+    pics.denied = true;
+    await store.usePictureFolder(pics);
+    expect(store.list()).toEqual([]);
     expect(errors).toHaveLength(1);
   });
 });

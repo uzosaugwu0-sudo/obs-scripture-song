@@ -22,7 +22,7 @@ describe('isValidLowerThird', () => {
     expect(isValidLowerThird({ ...ok, name: 5 })).toBe(false);
     expect(isValidLowerThird({ ...ok, info: true })).toBe(false);
     expect(isValidLowerThird({ ...ok, align: 'diagonal' })).toBe(false);
-    for (const logo of ['a/b.png', '../a.png', 'a.jpg', '']) expect(isValidLowerThird({ ...ok, logo })).toBe(false);
+    for (const logo of ['a/b.png', '../a.png', 'a.bmp', '']) expect(isValidLowerThird({ ...ok, logo })).toBe(false);
     for (const hideAfter of [0, -1, 1.5, MAX_HIDE_AFTER + 1, '8']) expect(isValidLowerThird({ ...ok, hideAfter })).toBe(false);
     expect(isValidLowerThird(null)).toBe(false);
   });
