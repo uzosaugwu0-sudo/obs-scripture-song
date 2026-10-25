@@ -1,4 +1,5 @@
 import { formatClock } from '../overlay/timer-clock.js';
+import { isValidLogoName } from './logos.js';
 
 export const MAX_TIMER_SECONDS = 359999;   // 99:59:59
 
@@ -60,4 +61,38 @@ export function timerFromInputs({ mode, title = '', minutes = '', seconds = '', 
   if (total < 1) return { ok: false, hint: 'Enter a time of at least 1 second.' };
   if (total > MAX_TIMER_SECONDS) return { ok: false, hint: 'The longest timer is 99:59:59.' };
   return { ok: true, draft: { type: 'timer', mode: 'duration', seconds: total, title: label } };
+}
+
+export const MAX_HIDE_AFTER = 3600;   // seconds
+const ALIGNS = ['left', 'center', 'right'];
+const textOrEmpty = (v) => (typeof v === 'string' ? v.trim() : '');
+
+/** Valid when some text is present (strings only), the placement is known, the picture is a plain .png name, and hideAfter is in range. */
+export function isValidLowerThird(item) {
+  if (!item || typeof item !== 'object') return false;
+  if ((item.name !== undefined && typeof item.name !== 'string') || (item.info !== undefined && typeof item.info !== 'string')) return false;
+  if (!textOrEmpty(item.name) && !textOrEmpty(item.info)) return false;
+  if (item.align !== undefined && !ALIGNS.includes(item.align)) return false;
+  if (item.logo != null && !isValidLogoName(item.logo)) return false;
+  if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;
+  return true;
+}
+
+export const describeLowerThird = (item) => (item.hideAfter ? 'hides after ' + item.hideAfter + 's' : 'stays');
+
+/** Read the lower third editor. hideAfter is the raw field text; blank means it stays until Hide. */
+export function lowerThirdFromInputs({ name = '', info = '', align = 'left', logo = '', hideAfter = '' }) {
+  const n = name.trim();
+  const i = info.trim();
+  if (!n && !i) return { ok: false, hint: 'Enter a name or some info.' };
+  const raw = hideAfter.trim();
+  let seconds = null;
+  if (raw !== '') {
+    seconds = WHOLE_NUMBER.test(raw) ? Number(raw) : NaN;
+    if (!(seconds >= 1 && seconds <= MAX_HIDE_AFTER)) return { ok: false, hint: 'Hide after must be 1 to 3600 seconds.' };
+  }
+  return {
+    ok: true,
+    draft: { type: 'lowerthird', name: n, info: i, align: ALIGNS.includes(align) ? align : 'left', logo: logo || null, hideAfter: seconds },
+  };
 }
