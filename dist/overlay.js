@@ -437,7 +437,7 @@
       }
       card.style.fontFamily = "'" + font + "', 'Open Sans', Georgia, serif";
       bodyEl.style.fontStyle = state.italic ? "italic" : "normal";
-      const hideTitle = kind === "verse" || state.showTitle === false || kind !== "song" && !state.title;
+      const hideTitle = kind === "verse" || kind !== "lowerthird" && state.showTitle === false || kind !== "song" && !state.title;
       const hideRef = kind !== "verse" || state.showReference === false;
       titleEl.style.display = hideTitle ? "none" : "";
       refEl.style.display = hideRef ? "none" : "";

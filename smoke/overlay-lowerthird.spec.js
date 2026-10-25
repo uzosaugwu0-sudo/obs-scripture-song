@@ -56,6 +56,14 @@ test.describe('overlay: lower third', () => {
     await expect(body).toHaveText('Guest speaker');
   });
 
+  test('the Song title setting does not hide a lower third name', async ({ page }) => {
+    const { push, title, body } = await setup(page);
+    await push(lt({}, { showTitle: false }));
+    await expect(title).toHaveText('Pastor John');
+    await expect(title).toBeVisible();
+    await expect(body).toHaveText('Guest speaker');
+  });
+
   test('name only and info only both work, and an empty one renders nothing', async ({ page }) => {
     const { push, stage, body, title } = await setup(page);
     await push(lt({}, { body: '' }));

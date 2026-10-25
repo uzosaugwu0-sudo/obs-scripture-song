@@ -101,7 +101,10 @@ export function initExtrasTab({
       return lowerThird.name.length > 0 || lowerThird.info.length > 0;
     },
     /** Show waits for this, so a lower third never goes on air before its picture has been read. */
-    ready: () => logoPending,
+    ready: async () => {
+      let waited;
+      do { waited = logoPending; await waited; } while (waited !== logoPending);
+    },
     getContent: () => ({ title: lowerThird.name, body: lowerThird.info, lowerthird: { align: lowerThird.align, logo: logoData } }),
     preview() {
       const text = lowerThird.name || lowerThird.info;

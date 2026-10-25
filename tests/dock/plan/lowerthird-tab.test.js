@@ -72,6 +72,25 @@ describe('the picture', () => {
   });
 });
 
+describe('ready() waits for the newest picture', () => {
+  it('does not resolve on an older read while a newer item is still loading', async () => {
+    const { tab, logoStore } = setup();
+    const releases = [];
+    logoStore.read.mockImplementation(() => new Promise((resolve) => { releases.push(() => resolve(LOGO)); }));
+    tab.load(item({ logo: 'john.png' }));
+    let done = false;
+    const waiting = tab.ready().then(() => { done = true; });
+    tab.load(item({ name: 'Second', logo: 'john.png' }));
+    releases[0]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(done).toBe(false);
+    releases[1]();
+    await waiting;
+    expect(done).toBe(true);
+    expect(tab.getContent()).toMatchObject({ title: 'Second', lowerthird: { logo: LOGO } });
+  });
+});
+
 describe('the automatic hide', () => {
   it('arms a timer at Show and hides once when it fires while that lower third is on air', () => {
     const { tab, session, timers, fire } = setup();

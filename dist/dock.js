@@ -2898,8 +2898,8 @@ ${DELIMITER}
   var LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,80}\.png$/i;
   var isValidLogoName = (name) => typeof name === "string" && LOGO_NAME.test(name) && !name.startsWith(".") && !name.includes("..");
   function logoFileName(sourceName, taken) {
-    const stem = (sourceName || "").replace(/\.[^.]*$/, "");
-    const base = stem.trim() ? safeFilename(stem, "logo") : "logo";
+    const stem = (sourceName || "").replace(/\.[^.]*$/, "").replace(/\./g, "_");
+    const base = (stem.trim() ? safeFilename(stem, "logo") : "logo").slice(0, 70).trim() || "logo";
     const used = new Set(taken.map((n) => n.toLowerCase()));
     let name = base + ".png";
     for (let n = 2; used.has(name.toLowerCase()); n += 1) name = base + " (" + n + ").png";
@@ -3208,7 +3208,10 @@ ${DELIMITER}
         return;
       }
       session.setTab(draft.type);
-      if (tab.ready) await tab.ready();
+      if (tab.ready) {
+        await tab.ready();
+        if (session.activeTab !== draft.type) return;
+      }
       if (tab.markShown) tab.markShown();
       session.show();
       setStatus(SHOW_NOW_MESSAGE[draft.type], "success");
@@ -3671,7 +3674,13 @@ ${DELIMITER}
         return lowerThird.name.length > 0 || lowerThird.info.length > 0;
       },
       /** Show waits for this, so a lower third never goes on air before its picture has been read. */
-      ready: () => logoPending,
+      ready: async () => {
+        let waited;
+        do {
+          waited = logoPending;
+          await waited;
+        } while (waited !== logoPending);
+      },
       getContent: () => ({ title: lowerThird.name, body: lowerThird.info, lowerthird: { align: lowerThird.align, logo: logoData } }),
       preview() {
         const text = lowerThird.name || lowerThird.info;

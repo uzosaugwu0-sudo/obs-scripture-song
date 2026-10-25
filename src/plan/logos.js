@@ -10,8 +10,8 @@ export const isValidLogoName = (name) =>
 
 /** A free "name.png": "Pastor John.jpg" becomes "Pastor_John.png", then "Pastor_John (2).png" if taken. */
 export function logoFileName(sourceName, taken) {
-  const stem = (sourceName || '').replace(/\.[^.]*$/, '');
-  const base = stem.trim() ? safeFilename(stem, 'logo') : 'logo';
+  const stem = (sourceName || '').replace(/\.[^.]*$/, '').replace(/\./g, '_');
+  const base = (stem.trim() ? safeFilename(stem, 'logo') : 'logo').slice(0, 70).trim() || 'logo';   // room for " (99).png" under the 80 limit
   const used = new Set(taken.map((n) => n.toLowerCase()));
   let name = base + '.png';
   for (let n = 2; used.has(name.toLowerCase()); n += 1) name = base + ' (' + n + ').png';

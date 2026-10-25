@@ -23,6 +23,17 @@ describe('logoFileName', () => {
   });
 });
 
+describe('logoFileName always makes a name the app accepts', () => {
+  it('survives long stems added more than once, double dots and leading dots', () => {
+    const long = 'x'.repeat(95) + '.jpg';
+    const taken = [];
+    for (let i = 0; i < 4; i += 1) { const name = logoFileName(long, taken); expect(isValidLogoName(name), name).toBe(true); taken.push(name); }
+    for (const source of ['a..b.jpg', '.hidden.png', '..png', 'my.logo.v2.png', '  .jpg']) {
+      expect(isValidLogoName(logoFileName(source, [])), source).toBe(true);
+    }
+  });
+});
+
 describe('fitSize', () => {
   it('scales the longest side down to the limit and keeps the proportions', () => {
     expect(fitSize(400, 200)).toEqual({ width: LOGO_MAX_SIDE, height: 80 });

@@ -66,7 +66,10 @@ export function initPlanTab({ session, store, library, tabs, logoStore, setStatu
     const tab = tabs[draft.type];
     if (!tab.load(draftItem(draft))) { setStatus('That could not be loaded.', 'error'); return; }
     session.setTab(draft.type);
-    if (tab.ready) await tab.ready();   // a lower third waits for its picture
+    if (tab.ready) {   // a lower third waits for its picture
+      await tab.ready();
+      if (session.activeTab !== draft.type) return;   // the operator moved on meanwhile
+    }
     if (tab.markShown) tab.markShown();
     session.show();
     setStatus(SHOW_NOW_MESSAGE[draft.type], 'success');
