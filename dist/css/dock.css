@@ -225,3 +225,15 @@ input[type="color"] { width: 44px; height: 28px; padding: 0; border: 1px solid v
   padding: 8px 10px; border-radius: var(--r-field); background: var(--accent-bg); color: var(--accent-ink); font-size: 11px; }
 
 .menu-list.down { top: calc(100% + 4px); bottom: auto; }
+
+.add-row .btn { flex: 1 1 45%; }
+.extras-editor { display: flex; flex-direction: column; gap: var(--space-2); padding: 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-card); background: var(--surface); min-width: 0; }
+.extras-editor .row { align-items: flex-end; }
+.extras-editor label.lbl { flex: 1; min-width: 0; }
+.extras-editor input.field { margin-top: 4px; }
+.extras-editor .btn { min-height: 40px; }
+
+.timer-controls { display: flex; align-items: center; gap: var(--space-2); }
+.timer-live-text { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

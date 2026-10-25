@@ -73,3 +73,9 @@ export function uniqueName(plans, name, exceptId = null) {
   while (taken.has((base + ' (' + n + ')').toLowerCase())) n += 1;
   return base + ' (' + n + ')';
 }
+
+/** Swap in a whole new item at the same place, keeping the old id (fields the new item lacks are dropped). */
+export function replaceItem(plan, id, item) {
+  if (!plan.items.some((i) => i.id === id)) return plan;
+  return { ...plan, items: plan.items.map((i) => (i.id === id ? { ...item, id } : i)) };
+}

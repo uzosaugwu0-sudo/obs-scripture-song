@@ -2653,6 +2653,12 @@ ${DELIMITER}
   }
   var songItem = (songId, uid2 = uid) => ({ id: "i_" + uid2(), type: "song", songId });
   var readingItem = (ref, translation, uid2 = uid) => ({ id: "i_" + uid2(), type: "reading", ref, translation });
+  var announcementItem = ({ title = "", body = "" }, uid2 = uid) => ({ id: "i_" + uid2(), type: "announcement", title: title.trim(), body: body.trim() });
+  function timerItem({ mode, seconds, at, title = "" }, uid2 = uid) {
+    const base = { id: "i_" + uid2(), type: "timer", mode };
+    const spec = mode === "clock" ? { at } : { seconds };
+    return { ...base, ...spec, title: title.trim() };
+  }
   function addItem(plan, item, afterId = null) {
     const at = afterId === null ? -1 : plan.items.findIndex((i) => i.id === afterId);
     const index = at === -1 ? plan.items.length : at + 1;
@@ -2681,6 +2687,10 @@ ${DELIMITER}
     let n = 2;
     while (taken.has((base + " (" + n + ")").toLowerCase())) n += 1;
     return base + " (" + n + ")";
+  }
+  function replaceItem(plan, id, item) {
+    if (!plan.items.some((i) => i.id === id)) return plan;
+    return { ...plan, items: plan.items.map((i) => i.id === id ? { ...item, id } : i) };
   }
 
   // src/plan/folder.js
@@ -2861,6 +2871,33 @@ ${DELIMITER}
   function describeTimerSpec(spec) {
     return spec.mode === "clock" ? "at " + spec.at : formatClock(spec.seconds * 1e3);
   }
+  function parseClockInput(text) {
+    const raw = typeof text === "string" ? text.trim() : "";
+    const match = /^(\d{1,2}):(\d{2})$/.exec(raw) || /^(\d{1,2})(\d{2})$/.exec(raw);
+    if (!match) return null;
+    const at = match[1].padStart(2, "0") + ":" + match[2];
+    return isValidClockTime(at) ? at : null;
+  }
+  var WHOLE_NUMBER = /^\d+$/;
+  function announcementFromInputs({ title = "", body = "" }) {
+    if (!body.trim()) return { ok: false, hint: "Write the text to show." };
+    return { ok: true, draft: { type: "announcement", title: title.trim(), body: body.trim() } };
+  }
+  function timerFromInputs({ mode, title = "", minutes = "", seconds = "", clock = "" }) {
+    const label = title.trim();
+    if (mode === "clock") {
+      const at = parseClockInput(clock);
+      return at ? { ok: true, draft: { type: "timer", mode: "clock", at, title: label } } : { ok: false, hint: "Enter a 24-hour time such as 10:30." };
+    }
+    const m = minutes.trim() || "0";
+    const s = seconds.trim() || "0";
+    if (!WHOLE_NUMBER.test(m) || !WHOLE_NUMBER.test(s)) return { ok: false, hint: "Use whole numbers for minutes and seconds." };
+    if (Number(s) > 59) return { ok: false, hint: "Seconds go up to 59." };
+    const total = Number(m) * 60 + Number(s);
+    if (total < 1) return { ok: false, hint: "Enter a time of at least 1 second." };
+    if (total > MAX_TIMER_SECONDS) return { ok: false, hint: "The longest timer is 99:59:59." };
+    return { ok: true, draft: { type: "timer", mode: "duration", seconds: total, title: label } };
+  }
 
   // src/plan/cursor.js
   function itemStatus(item, library) {
@@ -2905,8 +2942,83 @@ ${DELIMITER}
     return where + " \xB7 " + (next ? "Next: " + itemTitle(next, library) : "End of plan");
   }
 
+  // src/dock/extras-editor.js
+  function initExtrasEditor({ onAdd, onSave, onShowNow }) {
+    const root = $("extras-editor"), heading = $("ed-heading"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
+    let type = "announcement";
+    let mode = "duration";
+    let editingId = null;
+    function read() {
+      return type === "announcement" ? announcementFromInputs({ title: title.value, body: text.value }) : timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
+    }
+    function setMode(next) {
+      mode = next;
+      modeButtons.forEach((button) => {
+        const on = button.dataset.value === mode;
+        button.classList.toggle("on", on);
+        button.setAttribute("aria-pressed", String(on));
+      });
+      durationFields.classList.toggle("hidden", mode !== "duration");
+      clockFields.classList.toggle("hidden", mode !== "clock");
+    }
+    function update() {
+      const result = read();
+      hint.textContent = result.ok ? "" : result.hint;
+      btnAdd.disabled = !result.ok;
+      btnShow.disabled = !result.ok;
+    }
+    function close() {
+      root.classList.add("hidden");
+      editingId = null;
+    }
+    function open({ type: nextType, item = null }) {
+      type = nextType;
+      editingId = item ? item.id : null;
+      heading.textContent = (item ? "Edit " : "New ") + (type === "announcement" ? "announcement" : "timer");
+      announcementFields.classList.toggle("hidden", type !== "announcement");
+      timerFields.classList.toggle("hidden", type !== "timer");
+      title.value = item ? item.title || "" : "";
+      text.value = item && type === "announcement" ? item.body || "" : "";
+      setMode(item && item.mode === "clock" ? "clock" : "duration");
+      const total = item && item.mode === "duration" && Number.isInteger(item.seconds) && item.seconds > 0 ? item.seconds : 0;
+      minutes.value = total ? String(Math.floor(total / 60)) : "";
+      seconds.value = total ? String(total % 60) : "";
+      clock.value = item && item.mode === "clock" ? item.at || "" : "";
+      btnAdd.textContent = item ? "Save" : "Add to plan";
+      root.classList.remove("hidden");
+      update();
+      (type === "announcement" ? text : minutes).focus();
+    }
+    [title, text, minutes, seconds, clock].forEach((field) => field.addEventListener("input", update));
+    modeButtons.forEach((button) => button.addEventListener("click", () => {
+      setMode(button.dataset.value);
+      update();
+    }));
+    btnAdd.addEventListener("click", () => {
+      const result = read();
+      if (!result.ok) return;
+      if (editingId) onSave(result.draft, editingId);
+      else onAdd(result.draft);
+      close();
+    });
+    btnShow.addEventListener("click", () => {
+      const result = read();
+      if (!result.ok) return;
+      onShowNow(result.draft);
+      close();
+    });
+    btnCancel.addEventListener("click", close);
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        close();
+        e.stopPropagation();
+      }
+    });
+    return { open, close, isOpen: () => !root.classList.contains("hidden") };
+  }
+
   // src/dock/plan-tab.js
-  var TYPE_ICON = { song: "\u266B", reading: "\u271D" };
+  var TYPE_ICON = { song: "\u266B", reading: "\u271D", announcement: "\u270E", timer: "\u23F1" };
   var BANNER_TEXT = {
     local: "Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.",
     "folder-lost": "Lost access to the library folder. Plans are safe in this browser. Open Songs, Library tools and choose Reconnect."
@@ -2943,6 +3055,29 @@ ${DELIMITER}
       store.setLastId(plan.id);
       render();
     });
+    const draftItem = (draft) => draft.type === "announcement" ? announcementItem(draft) : timerItem(draft);
+    function showNow(draft) {
+      const item = draftItem(draft);
+      if (!tabs[draft.type].load(item)) {
+        setStatus("That could not be loaded.", "error");
+        return;
+      }
+      session.setTab(draft.type);
+      if (tabs[draft.type].markShown) tabs[draft.type].markShown();
+      session.show();
+      setStatus(draft.type === "timer" ? "Timer is running." : "Announcement is live.", "success");
+    }
+    const editor = initExtrasEditor({
+      onAdd: (draft) => {
+        edit((p) => addItem(p, draftItem(draft), currentId));
+        setStatus("Added " + (draft.title || draft.type) + " to the plan.", "success");
+      },
+      onSave: (draft, id) => {
+        edit((p) => replaceItem(p, id, draftItem(draft)));
+        setStatus("Saved.", "success");
+      },
+      onShowNow: showNow
+    });
     function renderSelect() {
       const known = store.list();
       const entries = known.some((p) => p.id === plan.id) ? known : [...known, plan];
@@ -2977,6 +3112,8 @@ ${DELIMITER}
         const count = library.get(item.songId).slides.length;
         return count + (count === 1 ? " slide" : " slides");
       }
+      if (item.type === "announcement") return "announcement";
+      if (item.type === "timer") return describeTimerSpec(item);
       return item.translation || "reading";
     }
     function renderRow(item, index, currentIndex) {
@@ -3020,7 +3157,9 @@ ${DELIMITER}
       up.disabled = index === 0;
       const down = actionButton("btn btn-ghost", "Move down", () => edit((p) => moveItem(p, item.id, 1)));
       down.disabled = index === plan.items.length - 1;
-      actions.append(up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
+      const canEdit = item.type === "announcement" || item.type === "timer";
+      const editButton = canEdit ? [actionButton("btn btn-ghost", "Edit", () => editor.open({ type: item.type, item }))] : [];
+      actions.append(...editButton, up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
       return actions;
     }
     function removeRow(id) {
@@ -3083,6 +3222,9 @@ ${DELIMITER}
             return;
           }
           session.setTab("songs");
+        } else if (item.type === "announcement" || item.type === "timer") {
+          tabs[item.type].load(item);
+          session.setTab(item.type);
         } else {
           const ok = await tabs.scripture.loadReading(item.ref, item.translation);
           if (ok === null) return;
@@ -3190,6 +3332,8 @@ ${DELIMITER}
       select.blur();
       if (chosen) openPlan(chosen);
     });
+    $("btn-plan-add-announcement").addEventListener("click", () => editor.open({ type: "announcement" }));
+    $("btn-plan-add-timer").addEventListener("click", () => editor.open({ type: "timer" }));
     btnNext.addEventListener("click", nextItem);
     $("btn-plan-add-song").addEventListener("click", () => startPicking("songs"));
     $("btn-plan-add-verse").addEventListener("click", () => startPicking("scripture"));
