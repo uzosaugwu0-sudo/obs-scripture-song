@@ -2733,7 +2733,7 @@ ${DELIMITER}
     if (!plan.items.some((i) => i.id === id)) return plan;
     return { ...plan, items: plan.items.map((i) => i.id === id ? { ...item, id } : i) };
   }
-  var lowerThirdItem = ({ name = "", info = "", align = "left", logo = null, hideAfter = null }, uid2 = uid) => ({ id: "i_" + uid2(), type: "lowerthird", name: name.trim(), info: info.trim(), align, logo, hideAfter });
+  var lowerThirdItem = ({ name = "", info = "", align = "left", logo = null, logoData = null, hideAfter = null }, uid2 = uid) => ({ id: "i_" + uid2(), type: "lowerthird", name: name.trim(), info: info.trim(), align, logo, logoData, hideAfter });
 
   // src/plan/folder.js
   var PLANS_DIR = "plans";
@@ -2959,6 +2959,8 @@ ${DELIMITER}
     return { ok: true, draft: { type: "timer", mode: "duration", seconds: total, title: label } };
   }
   var MAX_HIDE_AFTER = 3600;
+  var MAX_ITEM_LOGO_DATA = 15e4;
+  var usableLogoData = (value) => isLogoDataUrl(value) && value.length <= MAX_ITEM_LOGO_DATA;
   var ALIGNS = ["left", "center", "right"];
   var textOrEmpty = (v) => typeof v === "string" ? v.trim() : "";
   function isValidLowerThird(item) {
@@ -2967,11 +2969,12 @@ ${DELIMITER}
     if (!textOrEmpty(item.name) && !textOrEmpty(item.info)) return false;
     if (item.align !== void 0 && !ALIGNS.includes(item.align)) return false;
     if (item.logo != null && !isValidLogoName(item.logo)) return false;
+    if (item.logoData != null && !usableLogoData(item.logoData)) return false;
     if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;
     return true;
   }
   var describeLowerThird = (item) => item.hideAfter ? "hides after " + item.hideAfter + "s" : "stays";
-  function lowerThirdFromInputs({ name = "", info = "", align = "left", logo = "", hideAfter = "" }) {
+  function lowerThirdFromInputs({ name = "", info = "", align = "left", logo = "", logoData = "", hideAfter = "" }) {
     const n = name.trim();
     const i = info.trim();
     if (!n && !i) return { ok: false, hint: "Enter a name or some info." };
@@ -2981,9 +2984,10 @@ ${DELIMITER}
       seconds = WHOLE_NUMBER.test(raw) ? Number(raw) : NaN;
       if (!(seconds >= 1 && seconds <= MAX_HIDE_AFTER)) return { ok: false, hint: "Hide after must be 1 to 3600 seconds." };
     }
+    if (logoData && !usableLogoData(logoData)) return { ok: false, hint: "That picture could not be used. Choose it again." };
     return {
       ok: true,
-      draft: { type: "lowerthird", name: n, info: i, align: ALIGNS.includes(align) ? align : "left", logo: logo || null, hideAfter: seconds }
+      draft: { type: "lowerthird", name: n, info: i, align: ALIGNS.includes(align) ? align : "left", logo: logoData ? null : logo || null, logoData: logoData || null, hideAfter: seconds }
     };
   }
 
@@ -3033,8 +3037,84 @@ ${DELIMITER}
     return where + " \xB7 " + (next ? "Next: " + itemTitle(next, library) : "End of plan");
   }
 
+  // src/dock/plan/logo-store.js
+  var LOGOS_DIR = "logos";
+  var MAX_PICTURE_BYTES = 10 * 1024 * 1024;
+  async function encodeLogo(file) {
+    if (!file || !String(file.type).startsWith("image/")) throw new Error("That file is not a picture.");
+    if (file.size > MAX_PICTURE_BYTES) throw new Error("That picture is too large.");
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch {
+      throw new Error("That picture could not be read.");
+    }
+    const size = fitSize(bitmap.width, bitmap.height);
+    if (!size) throw new Error("That picture could not be read.");
+    const canvas = document.createElement("canvas");
+    canvas.width = size.width;
+    canvas.height = size.height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, size.width, size.height);
+    bitmap.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("That picture could not be converted.");
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (Math.ceil(bytes.length / 3) * 4 > MAX_LOGO_DATA_URL) throw new Error("That picture is too detailed. Try a simpler one.");
+    return bytes;
+  }
+  var logoDataUrl = (bytes) => "data:image/png;base64," + toBase64(bytes);
+  function toBase64(bytes) {
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 32768) text += String.fromCharCode(...bytes.subarray(i, i + 32768));
+    return btoa(text);
+  }
+  async function listNames(dir) {
+    const names = [];
+    for await (const entry of dir.values()) if (entry.kind === "file" && isValidLogoName(entry.name)) names.push(entry.name);
+    return names.sort();
+  }
+  function createLogoStore({ onError = () => {
+  }, encode = encodeLogo } = {}) {
+    let dir = null;
+    let names = [];
+    return {
+      async attach(dirHandle) {
+        const logos = await dirHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
+        names = await listNames(logos);
+        dir = logos;
+      },
+      detach() {
+        dir = null;
+        names = [];
+      },
+      available: () => dir !== null,
+      list: () => names.slice(),
+      has: (name) => names.includes(name),
+      async add(file) {
+        if (!dir) throw new Error("Choose a library folder first.");
+        const bytes = await encode(file);
+        const name = logoFileName(file.name, names);
+        await writeFileAtomic(dir, name, bytes);
+        names = [...names, name].sort();
+        return name;
+      },
+      async read(name) {
+        if (!dir || !isValidLogoName(name)) return null;
+        try {
+          const handle = await dir.getFileHandle(name);
+          const file = await handle.getFile();
+          return logoDataUrl(new Uint8Array(await file.arrayBuffer()));
+        } catch (err) {
+          if (err.name !== "NotFoundError") onError(err);
+          return null;
+        }
+      }
+    };
+  }
+
   // src/dock/plan/extras-editor.js
-  var NO_FOLDER_HINT = "Choose a library folder in Songs > Library tools to use pictures.";
+  var NO_FOLDER_HINT = "No library folder is connected, so the picture is kept inside this lower third.";
+  var EMBEDDED = "@embedded";
   var NAMES = { announcement: "announcement", timer: "timer", lowerthird: "lower third" };
   function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
     const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
@@ -3042,10 +3122,11 @@ ${DELIMITER}
     let mode = "duration";
     let align = "left";
     let editingId = null;
+    let embedded = null;
     function read() {
       if (type === "announcement") return announcementFromInputs({ title: title.value, body: text.value });
       if (type === "timer") return timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
-      return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value, hideAfter: ltHide.value });
+      return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value === EMBEDDED ? "" : ltLogo.value, logoData: ltLogo.value === EMBEDDED ? embedded : "", hideAfter: ltHide.value });
     }
     function setPressed(buttons, value) {
       buttons.forEach((button) => {
@@ -3066,18 +3147,18 @@ ${DELIMITER}
     }
     function fillLogos(selected) {
       const names = logoStore.list();
-      const choices = selected && !names.includes(selected) ? [...names, selected] : names;
-      ltLogo.replaceChildren(...["", ...choices].map((name) => {
+      const choices = selected && selected !== EMBEDDED && !names.includes(selected) ? [...names, selected] : names;
+      const options = [{ value: "", label: "No picture" }];
+      if (embedded) options.push({ value: EMBEDDED, label: "Picture from this computer" });
+      choices.forEach((name) => options.push({ value: name, label: names.includes(name) ? name : name + " (missing)" }));
+      ltLogo.replaceChildren(...options.map(({ value, label }) => {
         const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name === "" ? "No picture" : names.includes(name) ? name : name + " (missing)";
+        option.value = value;
+        option.textContent = label;
         return option;
       }));
       ltLogo.value = selected || "";
-      const usable = logoStore.available();
-      ltLogo.disabled = !usable;
-      ltAddLogo.disabled = !usable;
-      ltLogoHint.textContent = usable ? "" : NO_FOLDER_HINT;
+      ltLogoHint.textContent = logoStore.available() ? "" : NO_FOLDER_HINT;
     }
     function update() {
       const result = read();
@@ -3108,7 +3189,8 @@ ${DELIMITER}
       ltInfo.value = item && type === "lowerthird" ? item.info || "" : "";
       ltHide.value = item && type === "lowerthird" && item.hideAfter ? String(item.hideAfter) : "";
       setAlign(item && type === "lowerthird" && item.align ? item.align : "left");
-      fillLogos(item && type === "lowerthird" ? item.logo || "" : "");
+      embedded = item && type === "lowerthird" && item.logoData ? item.logoData : null;
+      fillLogos(embedded ? EMBEDDED : item && type === "lowerthird" ? item.logo || "" : "");
       btnAdd.textContent = item ? "Save" : "Add to plan";
       root.classList.remove("hidden");
       update();
@@ -3130,8 +3212,14 @@ ${DELIMITER}
       ltFile.value = "";
       if (!file) return;
       try {
-        const name = await logoStore.add(file);
-        fillLogos(name);
+        if (logoStore.available()) {
+          fillLogos(await logoStore.add(file));
+        } else {
+          const url = logoDataUrl(await encodeLogo(file));
+          if (url.length > MAX_ITEM_LOGO_DATA) throw new Error("That picture is too detailed. Try a simpler one.");
+          embedded = url;
+          fillLogos(EMBEDDED);
+        }
         update();
       } catch (err) {
         ltLogoHint.textContent = err.message || "That picture could not be added.";
@@ -3665,8 +3753,9 @@ ${DELIMITER}
       load(item) {
         const wanted = item.logo || null;
         lowerThird = { name: (item.name || "").trim(), info: (item.info || "").trim(), align: item.align || "left", logo: wanted, hideAfter: item.hideAfter || null };
-        logoData = null;
-        logoPending = wanted && logoStore ? logoStore.read(wanted).catch(() => null).then((data) => {
+        const embedded = isLogoDataUrl(item.logoData) ? item.logoData : null;
+        logoData = embedded;
+        logoPending = !embedded && wanted && logoStore ? logoStore.read(wanted).catch(() => null).then((data) => {
           if (lowerThird.logo === wanted) logoData = data;
           refresh();
         }) : Promise.resolve();
@@ -3710,80 +3799,6 @@ ${DELIMITER}
       }, DISPLAY_TICK_MS);
     }
     return { announcement: announcementTab, timer: timerTab, lowerthird: lowerThirdTab };
-  }
-
-  // src/dock/plan/logo-store.js
-  var LOGOS_DIR = "logos";
-  var MAX_PICTURE_BYTES = 10 * 1024 * 1024;
-  async function encodeLogo(file) {
-    if (!file || !String(file.type).startsWith("image/")) throw new Error("That file is not a picture.");
-    if (file.size > MAX_PICTURE_BYTES) throw new Error("That picture is too large.");
-    let bitmap;
-    try {
-      bitmap = await createImageBitmap(file);
-    } catch {
-      throw new Error("That picture could not be read.");
-    }
-    const size = fitSize(bitmap.width, bitmap.height);
-    if (!size) throw new Error("That picture could not be read.");
-    const canvas = document.createElement("canvas");
-    canvas.width = size.width;
-    canvas.height = size.height;
-    canvas.getContext("2d").drawImage(bitmap, 0, 0, size.width, size.height);
-    bitmap.close();
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("That picture could not be converted.");
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    if (Math.ceil(bytes.length / 3) * 4 > MAX_LOGO_DATA_URL) throw new Error("That picture is too detailed. Try a simpler one.");
-    return bytes;
-  }
-  function toBase64(bytes) {
-    let text = "";
-    for (let i = 0; i < bytes.length; i += 32768) text += String.fromCharCode(...bytes.subarray(i, i + 32768));
-    return btoa(text);
-  }
-  async function listNames(dir) {
-    const names = [];
-    for await (const entry of dir.values()) if (entry.kind === "file" && isValidLogoName(entry.name)) names.push(entry.name);
-    return names.sort();
-  }
-  function createLogoStore({ onError = () => {
-  }, encode = encodeLogo } = {}) {
-    let dir = null;
-    let names = [];
-    return {
-      async attach(dirHandle) {
-        const logos = await dirHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
-        names = await listNames(logos);
-        dir = logos;
-      },
-      detach() {
-        dir = null;
-        names = [];
-      },
-      available: () => dir !== null,
-      list: () => names.slice(),
-      has: (name) => names.includes(name),
-      async add(file) {
-        if (!dir) throw new Error("Choose a library folder first.");
-        const bytes = await encode(file);
-        const name = logoFileName(file.name, names);
-        await writeFileAtomic(dir, name, bytes);
-        names = [...names, name].sort();
-        return name;
-      },
-      async read(name) {
-        if (!dir || !isValidLogoName(name)) return null;
-        try {
-          const handle = await dir.getFileHandle(name);
-          const file = await handle.getFile();
-          return "data:image/png;base64," + toBase64(new Uint8Array(await file.arrayBuffer()));
-        } catch (err) {
-          if (err.name !== "NotFoundError") onError(err);
-          return null;
-        }
-      }
-    };
   }
 
   // src/dock/main.js

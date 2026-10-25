@@ -25,6 +25,9 @@ export async function encodeLogo(file) {
   return bytes;
 }
 
+/** Picture bytes as a PNG data URL, the form the overlay is sent. */
+export const logoDataUrl = (bytes) => 'data:image/png;base64,' + toBase64(bytes);
+
 function toBase64(bytes) {
   let text = '';
   for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -69,7 +72,7 @@ export function createLogoStore({ onError = () => {}, encode = encodeLogo } = {}
       try {
         const handle = await dir.getFileHandle(name);
         const file = await handle.getFile();
-        return 'data:image/png;base64,' + toBase64(new Uint8Array(await file.arrayBuffer()));
+        return logoDataUrl(new Uint8Array(await file.arrayBuffer()));
       } catch (err) {
         if (err.name !== 'NotFoundError') onError(err);
         return null;

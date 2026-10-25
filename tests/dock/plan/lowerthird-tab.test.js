@@ -91,6 +91,30 @@ describe('ready() waits for the newest picture', () => {
   });
 });
 
+describe('a picture kept inside the item', () => {
+  it('is used straight away, without reading any file', async () => {
+    const { tab, logoStore } = setup();
+    expect(tab.load(item({ logo: null, logoData: LOGO }))).toBe(true);
+    expect(tab.getContent().lowerthird.logo).toBe(LOGO);
+    await tab.ready();
+    expect(logoStore.read).not.toHaveBeenCalled();
+  });
+
+  it('works with no logo store at all', async () => {
+    const { tab } = setup({ withStore: false });
+    tab.load(item({ logoData: LOGO }));
+    await tab.ready();
+    expect(tab.getContent().lowerthird.logo).toBe(LOGO);
+  });
+
+  it('a bad embedded value is ignored and the folder picture is tried instead', async () => {
+    const { tab } = setup();
+    tab.load(item({ logo: 'john.png', logoData: 'javascript:alert(1)' }));
+    await tab.ready();
+    expect(tab.getContent().lowerthird.logo).toBe(LOGO);
+  });
+});
+
 describe('the automatic hide', () => {
   it('arms a timer at Show and hides once when it fires while that lower third is on air', () => {
     const { tab, session, timers, fire } = setup();

@@ -82,7 +82,7 @@ On the Plan tab, **+ Lower third** opens the same small editor as announcements 
 
 - **It looks like your other cards.** A frosted bar with an accent edge, always at the bottom, in the theme, font and size you chose on the Style tab. It takes turns with the verse, song, announcement or timer card: showing a lower third replaces the card, and showing a card replaces the lower third.
 - **Hide after.** Leave it blank and the lower third stays until you press **Hide**. Fill in a number of seconds and it hides itself after that long. Pressing Hide or showing something else first cancels it, so it never hides the wrong thing.
-- **Pictures** (a church logo, a speaker's headshot) are kept as small PNG files in a `logos` folder inside your library folder. Choose a library folder in Songs, Library tools first. **Add picture...** shrinks the picture and saves it once; any lower third can use it. If a picture file is moved or deleted, the lower third still shows its name and info and the row says "picture missing".
+- **Pictures** (a church logo, a speaker's headshot): press **Add picture...** and choose any image on this computer. It is shrunk to a small size first. With a library folder connected (Songs, Library tools) it is saved once as a PNG in a `logos` folder, so every lower third can reuse it. With no library folder it is kept inside that lower third and saved with the plan, so it works either way. If a saved picture file is moved or deleted, the lower third still shows its name and info and the row says "picture missing".
 
 ### Scripture tab
 

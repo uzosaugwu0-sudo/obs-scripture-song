@@ -1,5 +1,6 @@
 import { formatClock } from '../overlay/timer-clock.js';
 import { isValidLogoName } from './logos.js';
+import { isLogoDataUrl } from '../core/state.js';
 
 export const MAX_TIMER_SECONDS = 359999;   // 99:59:59
 
@@ -64,6 +65,8 @@ export function timerFromInputs({ mode, title = '', minutes = '', seconds = '', 
 }
 
 export const MAX_HIDE_AFTER = 3600;   // seconds
+export const MAX_ITEM_LOGO_DATA = 150000;   // a picture kept inside the item stays small, since it is saved with the plan
+const usableLogoData = (value) => isLogoDataUrl(value) && value.length <= MAX_ITEM_LOGO_DATA;
 const ALIGNS = ['left', 'center', 'right'];
 const textOrEmpty = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -74,6 +77,7 @@ export function isValidLowerThird(item) {
   if (!textOrEmpty(item.name) && !textOrEmpty(item.info)) return false;
   if (item.align !== undefined && !ALIGNS.includes(item.align)) return false;
   if (item.logo != null && !isValidLogoName(item.logo)) return false;
+  if (item.logoData != null && !usableLogoData(item.logoData)) return false;
   if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;
   return true;
 }
@@ -81,7 +85,7 @@ export function isValidLowerThird(item) {
 export const describeLowerThird = (item) => (item.hideAfter ? 'hides after ' + item.hideAfter + 's' : 'stays');
 
 /** Read the lower third editor. hideAfter is the raw field text; blank means it stays until Hide. */
-export function lowerThirdFromInputs({ name = '', info = '', align = 'left', logo = '', hideAfter = '' }) {
+export function lowerThirdFromInputs({ name = '', info = '', align = 'left', logo = '', logoData = '', hideAfter = '' }) {
   const n = name.trim();
   const i = info.trim();
   if (!n && !i) return { ok: false, hint: 'Enter a name or some info.' };
@@ -91,8 +95,9 @@ export function lowerThirdFromInputs({ name = '', info = '', align = 'left', log
     seconds = WHOLE_NUMBER.test(raw) ? Number(raw) : NaN;
     if (!(seconds >= 1 && seconds <= MAX_HIDE_AFTER)) return { ok: false, hint: 'Hide after must be 1 to 3600 seconds.' };
   }
+  if (logoData && !usableLogoData(logoData)) return { ok: false, hint: 'That picture could not be used. Choose it again.' };
   return {
     ok: true,
-    draft: { type: 'lowerthird', name: n, info: i, align: ALIGNS.includes(align) ? align : 'left', logo: logo || null, hideAfter: seconds },
+    draft: { type: 'lowerthird', name: n, info: i, align: ALIGNS.includes(align) ? align : 'left', logo: logoData ? null : (logo || null), logoData: logoData || null, hideAfter: seconds },
   };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createLogoStore } from '../../../src/dock/plan/logo-store.js';
+import { createLogoStore, logoDataUrl } from '../../../src/dock/plan/logo-store.js';
 import { createFakeDir } from '../../helpers/fake-dir.js';
 
 const bytes = (...n) => new Uint8Array(n);
@@ -46,6 +46,13 @@ describe('attach, list and has', () => {
     expect(store.list()).toEqual([]);
     expect(store.has('a.png')).toBe(false);
     expect(await store.read('a.png')).toBeNull();
+  });
+});
+
+describe('logoDataUrl', () => {
+  it('turns picture bytes into a PNG data URL', () => {
+    expect(logoDataUrl(bytes(137, 80, 78, 71))).toBe(dataUrl(137, 80, 78, 71));
+    expect(logoDataUrl(new Uint8Array(70000))).toMatch(/^data:image\/png;base64,A+=*$/);
   });
 });
 
