@@ -1,4 +1,4 @@
-import { $ } from './util.js';
+import { $ } from '../shared/util.js';
 
 const PHASE_LABEL = { off: 'OFF', live: 'LIVE', hidden: 'HIDDEN' };
 const EMPTY_PREVIEW = { has: false, text: 'Nothing loaded', sub: 'Look up a verse or pick a slide', canNav: false };

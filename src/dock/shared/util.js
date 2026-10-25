@@ -1,8 +1,6 @@
-export const $ = (id) => document.getElementById(id);
+import { escapeHtml } from '../../core/html.js';
 
-export function escapeHtml(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-}
+export const $ = (id) => document.getElementById(id);
 
 export function highlightMatch(text, q) {
   if (!q) return escapeHtml(text);

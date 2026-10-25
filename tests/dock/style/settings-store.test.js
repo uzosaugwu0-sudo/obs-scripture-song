@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createSettingsStore } from '../../src/dock/settings-store.js';
-import { SETTINGS_KEY } from '../../src/core/settings.js';
-import { memoryStorage } from '../helpers/memory-storage.js';
+import { createSettingsStore } from '../../../src/dock/style/settings-store.js';
+import { SETTINGS_KEY } from '../../../src/core/settings.js';
+import { memoryStorage } from '../../helpers/memory-storage.js';
 
 describe('settings store', () => {
   it('starts from defaults and migrates legacy saved values', () => {

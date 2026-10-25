@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createTimerRun } from '../../src/dock/timer-run.js';
+import { createTimerRun } from '../../../src/dock/plan/timer-run.js';
 
 function setup() {
   const clock = { t: new Date(2026, 9, 25, 9, 0, 0).getTime() };

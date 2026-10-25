@@ -30,3 +30,16 @@ export async function createSong(dock, title, slides) {
 export async function blockBibleApi(context) {
   await context.route('https://bolls.life/**', (route) => route.abort());
 }
+
+/** Open the overlay and return a push(state) that drives it the way the dock does, plus its main locators. */
+export async function setupOverlay(page, defaults = {}) {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/overlay.html');
+  let seq = Date.now();
+  const push = (state) => page.evaluate(
+    ([key, payload]) => localStorage.setItem(key, JSON.stringify(payload)),
+    ['obs-stage-display-state', { action: 'show', version: 1, visible: true, ...defaults, ...state, seq: (seq += 1) }],
+  );
+  return { push, errors, stage: page.locator('#stage'), body: page.locator('#ov-body'), title: page.locator('#ov-title') };
+}

@@ -1,6 +1,6 @@
 import { createTimerRun } from './timer-run.js';
-import { formatClock, remainingMs } from '../overlay/timer-clock.js';
-import { describeTimerSpec } from '../plan/extras.js';
+import { formatClock, remainingMs } from '../../overlay/timer-clock.js';
+import { describeTimerSpec } from '../../plan/extras.js';
 
 const DISPLAY_TICK_MS = 1000;
 const NOTHING = { has: false, text: 'Nothing loaded', canNav: false };

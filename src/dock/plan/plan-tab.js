@@ -1,7 +1,7 @@
-import { $ } from './util.js';
-import { createPlan, addItem, songItem, readingItem, announcementItem, timerItem, renamePlan, moveItem, moveItemTo, removeItem, replaceItem, DEFAULT_PLAN_NAME } from '../plan/model.js';
-import { itemStatus, itemTitle, indexOfItem, nextLoadable, prevLoadable, currentAfterRemove, planSummary } from '../plan/cursor.js';
-import { describeTimerSpec } from '../plan/extras.js';
+import { $ } from '../shared/util.js';
+import { createPlan, addItem, songItem, readingItem, announcementItem, timerItem, renamePlan, moveItem, moveItemTo, removeItem, replaceItem, DEFAULT_PLAN_NAME } from '../../plan/model.js';
+import { itemStatus, itemTitle, indexOfItem, nextLoadable, prevLoadable, currentAfterRemove, planSummary } from '../../plan/cursor.js';
+import { describeTimerSpec } from '../../plan/extras.js';
 import { initExtrasEditor } from './extras-editor.js';
 
 const TYPE_ICON = { song: '♫', reading: '✝', announcement: '✎', timer: '⏱' };

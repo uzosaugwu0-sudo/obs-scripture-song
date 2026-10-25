@@ -1,6 +1,6 @@
-import { $ } from './util.js';
-import { normalizeTitle } from '../songs/model.js';
-import { parseSongFile } from '../songs/parse.js';
+import { $ } from '../shared/util.js';
+import { normalizeTitle } from '../../songs/model.js';
+import { parseSongFile } from '../../songs/parse.js';
 
 const SONG_FILE = /[.](txt|json|csv|tsv)$/i;
 

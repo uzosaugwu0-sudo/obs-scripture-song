@@ -1,4 +1,4 @@
-import { loadSettings, saveSettings } from '../core/settings.js';
+import { loadSettings, saveSettings } from '../../core/settings.js';
 
 const STYLE_KEYS = ['theme', 'position', 'fontSize', 'animation', 'font', 'italic', 'opacity',
                     'scale', 'showCard', 'showTitle', 'showReference'];

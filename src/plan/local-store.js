@@ -2,7 +2,7 @@ import { isPlanRecord, toPlanRecord } from './model.js';
 
 export const PLANS_KEY     = 'obs-stage-plans';
 export const LAST_PLAN_KEY = 'obs-stage-last-plan';
-export const DIRTY_KEY     = 'obs-stage-plans-dirty';
+const DIRTY_KEY     = 'obs-stage-plans-dirty';
 
 /** Plans kept in the browser: the plan list when no folder is chosen, and a safety copy beside the folder. */
 export function createLocalPlanStore(storage, onError = () => {}) {

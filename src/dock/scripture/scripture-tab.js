@@ -1,6 +1,6 @@
-import { $, highlightMatch } from './util.js';
-import { LANGUAGES, TRANSLATIONS } from '../scripture/translations.js';
-import { buildReference, stepReference } from '../scripture/reference.js';
+import { $, highlightMatch } from '../shared/util.js';
+import { LANGUAGES, TRANSLATIONS } from '../../scripture/translations.js';
+import { buildReference, stepReference } from '../../scripture/reference.js';
 import { initSmartBox } from './smart-box.js';
 
 export function initScriptureTab({ session, scripture, store, setStatus, refresh, addToPlan, isPicking = () => false }) {
