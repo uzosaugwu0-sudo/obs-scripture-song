@@ -2733,6 +2733,7 @@ ${DELIMITER}
     if (!plan.items.some((i) => i.id === id)) return plan;
     return { ...plan, items: plan.items.map((i) => i.id === id ? { ...item, id } : i) };
   }
+  var lowerThirdItem = ({ name = "", info = "", align = "left", logo = null, hideAfter = null }, uid2 = uid) => ({ id: "i_" + uid2(), type: "lowerthird", name: name.trim(), info: info.trim(), align, logo, hideAfter });
 
   // src/plan/folder.js
   var PLANS_DIR = "plans";
@@ -2969,6 +2970,22 @@ ${DELIMITER}
     if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;
     return true;
   }
+  var describeLowerThird = (item) => item.hideAfter ? "hides after " + item.hideAfter + "s" : "stays";
+  function lowerThirdFromInputs({ name = "", info = "", align = "left", logo = "", hideAfter = "" }) {
+    const n = name.trim();
+    const i = info.trim();
+    if (!n && !i) return { ok: false, hint: "Enter a name or some info." };
+    const raw = hideAfter.trim();
+    let seconds = null;
+    if (raw !== "") {
+      seconds = WHOLE_NUMBER.test(raw) ? Number(raw) : NaN;
+      if (!(seconds >= 1 && seconds <= MAX_HIDE_AFTER)) return { ok: false, hint: "Hide after must be 1 to 3600 seconds." };
+    }
+    return {
+      ok: true,
+      draft: { type: "lowerthird", name: n, info: i, align: ALIGNS.includes(align) ? align : "left", logo: logo || null, hideAfter: seconds }
+    };
+  }
 
   // src/plan/cursor.js
   var titleOk = (item) => item.title === void 0 || typeof item.title === "string";
@@ -3017,23 +3034,50 @@ ${DELIMITER}
   }
 
   // src/dock/plan/extras-editor.js
-  function initExtrasEditor({ onAdd, onSave, onShowNow }) {
-    const root = $("extras-editor"), heading = $("ed-heading"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
+  var NO_FOLDER_HINT = "Choose a library folder in Songs > Library tools to use pictures.";
+  var NAMES = { announcement: "announcement", timer: "timer", lowerthird: "lower third" };
+  function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
+    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
     let type = "announcement";
     let mode = "duration";
+    let align = "left";
     let editingId = null;
     function read() {
-      return type === "announcement" ? announcementFromInputs({ title: title.value, body: text.value }) : timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
+      if (type === "announcement") return announcementFromInputs({ title: title.value, body: text.value });
+      if (type === "timer") return timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
+      return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value, hideAfter: ltHide.value });
     }
-    function setMode(next) {
-      mode = next;
-      modeButtons.forEach((button) => {
-        const on = button.dataset.value === mode;
+    function setPressed(buttons, value) {
+      buttons.forEach((button) => {
+        const on = button.dataset.value === value;
         button.classList.toggle("on", on);
         button.setAttribute("aria-pressed", String(on));
       });
+    }
+    function setMode(next) {
+      mode = next;
+      setPressed(modeButtons, mode);
       durationFields.classList.toggle("hidden", mode !== "duration");
       clockFields.classList.toggle("hidden", mode !== "clock");
+    }
+    function setAlign(next) {
+      align = next;
+      setPressed(alignButtons, align);
+    }
+    function fillLogos(selected) {
+      const names = logoStore.list();
+      const choices = selected && !names.includes(selected) ? [...names, selected] : names;
+      ltLogo.replaceChildren(...["", ...choices].map((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name === "" ? "No picture" : names.includes(name) ? name : name + " (missing)";
+        return option;
+      }));
+      ltLogo.value = selected || "";
+      const usable = logoStore.available();
+      ltLogo.disabled = !usable;
+      ltAddLogo.disabled = !usable;
+      ltLogoHint.textContent = usable ? "" : NO_FOLDER_HINT;
     }
     function update() {
       const result = read();
@@ -3048,26 +3092,51 @@ ${DELIMITER}
     function open({ type: nextType, item = null }) {
       type = nextType;
       editingId = item ? item.id : null;
-      heading.textContent = (item ? "Edit " : "New ") + (type === "announcement" ? "announcement" : "timer");
+      heading.textContent = (item ? "Edit " : "New ") + NAMES[type];
+      titleField.classList.toggle("hidden", type === "lowerthird");
       announcementFields.classList.toggle("hidden", type !== "announcement");
       timerFields.classList.toggle("hidden", type !== "timer");
-      title.value = item ? item.title || "" : "";
+      lowerFields.classList.toggle("hidden", type !== "lowerthird");
+      title.value = item && type !== "lowerthird" ? item.title || "" : "";
       text.value = item && type === "announcement" ? item.body || "" : "";
       setMode(item && item.mode === "clock" ? "clock" : "duration");
       const total = item && item.mode === "duration" && Number.isInteger(item.seconds) && item.seconds > 0 ? item.seconds : 0;
       minutes.value = total ? String(Math.floor(total / 60)) : "";
       seconds.value = total ? String(total % 60) : "";
       clock.value = item && item.mode === "clock" ? item.at || "" : "";
+      ltName.value = item && type === "lowerthird" ? item.name || "" : "";
+      ltInfo.value = item && type === "lowerthird" ? item.info || "" : "";
+      ltHide.value = item && type === "lowerthird" && item.hideAfter ? String(item.hideAfter) : "";
+      setAlign(item && type === "lowerthird" && item.align ? item.align : "left");
+      fillLogos(item && type === "lowerthird" ? item.logo || "" : "");
       btnAdd.textContent = item ? "Save" : "Add to plan";
       root.classList.remove("hidden");
       update();
-      (type === "announcement" ? text : minutes).focus();
+      ({ announcement: text, timer: minutes, lowerthird: ltName })[type].focus();
     }
-    [title, text, minutes, seconds, clock].forEach((field) => field.addEventListener("input", update));
+    [title, text, minutes, seconds, clock, ltName, ltInfo, ltHide].forEach((field) => field.addEventListener("input", update));
+    ltLogo.addEventListener("change", update);
     modeButtons.forEach((button) => button.addEventListener("click", () => {
       setMode(button.dataset.value);
       update();
     }));
+    alignButtons.forEach((button) => button.addEventListener("click", () => {
+      setAlign(button.dataset.value);
+      update();
+    }));
+    ltAddLogo.addEventListener("click", () => ltFile.click());
+    ltFile.addEventListener("change", async () => {
+      const file = ltFile.files[0];
+      ltFile.value = "";
+      if (!file) return;
+      try {
+        const name = await logoStore.add(file);
+        fillLogos(name);
+        update();
+      } catch (err) {
+        ltLogoHint.textContent = err.message || "That picture could not be added.";
+      }
+    });
     btnAdd.addEventListener("click", () => {
       const result = read();
       if (!result.ok) return;
@@ -3092,7 +3161,8 @@ ${DELIMITER}
   }
 
   // src/dock/plan/plan-tab.js
-  var TYPE_ICON = { song: "\u266B", reading: "\u271D", announcement: "\u270E", timer: "\u23F1" };
+  var TYPE_ICON = { song: "\u266B", reading: "\u271D", announcement: "\u270E", timer: "\u23F1", lowerthird: "\u25AD" };
+  var SHOW_NOW_MESSAGE = { announcement: "Announcement is live.", timer: "Timer is running.", lowerthird: "Lower third is live." };
   var BANNER_TEXT = {
     local: "Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.",
     "folder-lost": "Lost access to the library folder. Plans are safe in this browser. Open Songs, Library tools and choose Reconnect."
@@ -3103,7 +3173,7 @@ ${DELIMITER}
     if (text !== void 0) el.textContent = text;
     return el;
   }
-  function initPlanTab({ session, store, library, tabs, setStatus, showView, refresh, report: report2 }) {
+  function initPlanTab({ session, store, library, tabs, logoStore, setStatus, showView, refresh, report: report2 }) {
     const select = $("plan-select"), listEl = $("plan-list"), banner = $("plan-banner"), unreadableEl = $("plan-unreadable"), btnMenu = $("btn-plan-menu"), menu = $("plan-menu"), picker = $("picker-banner"), pickerText = $("picker-text"), btnNext = $("btn-next-item");
     let plan = store.get(store.lastId()) || store.list()[0] || createPlan();
     let currentId = null;
@@ -3129,19 +3199,22 @@ ${DELIMITER}
       store.setLastId(plan.id);
       render();
     });
-    const draftItem = (draft) => draft.type === "announcement" ? announcementItem(draft) : timerItem(draft);
-    function showNow(draft) {
-      const item = draftItem(draft);
-      if (!tabs[draft.type].load(item)) {
+    const DRAFT_ITEM = { announcement: announcementItem, timer: timerItem, lowerthird: lowerThirdItem };
+    const draftItem = (draft) => DRAFT_ITEM[draft.type](draft);
+    async function showNow(draft) {
+      const tab = tabs[draft.type];
+      if (!tab.load(draftItem(draft))) {
         setStatus("That could not be loaded.", "error");
         return;
       }
       session.setTab(draft.type);
-      if (tabs[draft.type].markShown) tabs[draft.type].markShown();
+      if (tab.ready) await tab.ready();
+      if (tab.markShown) tab.markShown();
       session.show();
-      setStatus(draft.type === "timer" ? "Timer is running." : "Announcement is live.", "success");
+      setStatus(SHOW_NOW_MESSAGE[draft.type], "success");
     }
     const editor = initExtrasEditor({
+      logoStore,
       onAdd: (draft) => {
         edit((p) => addItem(p, draftItem(draft), currentId));
         setStatus("Added " + (draft.title || draft.type) + " to the plan.", "success");
@@ -3188,6 +3261,7 @@ ${DELIMITER}
         const count = library.get(item.songId).slides.length;
         return count + (count === 1 ? " slide" : " slides");
       }
+      if (item.type === "lowerthird") return item.logo && !logoStore.has(item.logo) ? "picture missing" : describeLowerThird(item);
       if (item.type === "announcement") return "announcement";
       if (item.type === "timer") return describeTimerSpec(item);
       return item.translation || "reading";
@@ -3233,7 +3307,7 @@ ${DELIMITER}
       up.disabled = index === 0;
       const down = actionButton("btn btn-ghost", "Move down", () => edit((p) => moveItem(p, item.id, 1)));
       down.disabled = index === plan.items.length - 1;
-      const canEdit = item.type === "announcement" || item.type === "timer";
+      const canEdit = item.type in DRAFT_ITEM;
       const editButton = canEdit ? [actionButton("btn btn-ghost", "Edit", () => editor.open({ type: item.type, item }))] : [];
       actions.append(...editButton, up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
       return actions;
@@ -3298,7 +3372,7 @@ ${DELIMITER}
             return;
           }
           session.setTab("songs");
-        } else if (item.type === "announcement" || item.type === "timer") {
+        } else if (item.type === "announcement" || item.type === "timer" || item.type === "lowerthird") {
           tabs[item.type].load(item);
           session.setTab(item.type);
         } else {
@@ -3410,6 +3484,7 @@ ${DELIMITER}
     });
     $("btn-plan-add-announcement").addEventListener("click", () => editor.open({ type: "announcement" }));
     $("btn-plan-add-timer").addEventListener("click", () => editor.open({ type: "timer" }));
+    $("btn-plan-add-lowerthird").addEventListener("click", () => editor.open({ type: "lowerthird" }));
     btnNext.addEventListener("click", nextItem);
     $("btn-plan-add-song").addEventListener("click", () => startPicking("songs"));
     $("btn-plan-add-verse").addEventListener("click", () => startPicking("scripture"));
@@ -3808,6 +3883,7 @@ ${DELIMITER}
         store: planStore,
         library,
         tabs,
+        logoStore,
         setStatus: status.setStatus,
         showView,
         refresh: () => liveBar.refresh(),

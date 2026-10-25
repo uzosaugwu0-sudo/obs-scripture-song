@@ -1,10 +1,11 @@
 import { $ } from '../shared/util.js';
-import { createPlan, addItem, songItem, readingItem, announcementItem, timerItem, renamePlan, moveItem, moveItemTo, removeItem, replaceItem, DEFAULT_PLAN_NAME } from '../../plan/model.js';
+import { createPlan, addItem, songItem, readingItem, announcementItem, timerItem, lowerThirdItem, renamePlan, moveItem, moveItemTo, removeItem, replaceItem, DEFAULT_PLAN_NAME } from '../../plan/model.js';
 import { itemStatus, itemTitle, indexOfItem, nextLoadable, prevLoadable, currentAfterRemove, planSummary } from '../../plan/cursor.js';
-import { describeTimerSpec } from '../../plan/extras.js';
+import { describeTimerSpec, describeLowerThird } from '../../plan/extras.js';
 import { initExtrasEditor } from './extras-editor.js';
 
-const TYPE_ICON = { song: '♫', reading: '✝', announcement: '✎', timer: '⏱' };
+const TYPE_ICON = { song: '♫', reading: '✝', announcement: '✎', timer: '⏱', lowerthird: '▭' };
+const SHOW_NOW_MESSAGE = { announcement: 'Announcement is live.', timer: 'Timer is running.', lowerthird: 'Lower third is live.' };
 const BANNER_TEXT = {
   local: 'Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.',
   'folder-lost': 'Lost access to the library folder. Plans are safe in this browser. Open Songs, Library tools and choose Reconnect.',
@@ -21,7 +22,7 @@ function make(tag, className, text) {
  * The Plan tab: a named list of songs and readings. It only decides what to
  * load; what is on air is still decided by Show and Hide in the live bar.
  */
-export function initPlanTab({ session, store, library, tabs, setStatus, showView, refresh, report }) {
+export function initPlanTab({ session, store, library, tabs, logoStore, setStatus, showView, refresh, report }) {
   const select = $('plan-select'), listEl = $('plan-list'), banner = $('plan-banner'),
         unreadableEl = $('plan-unreadable'), btnMenu = $('btn-plan-menu'), menu = $('plan-menu'),
         picker = $('picker-banner'), pickerText = $('picker-text'), btnNext = $('btn-next-item');
@@ -57,19 +58,22 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
 
   // ── Announcements and timers: the editor ──────────────────────────────────
 
-  const draftItem = (draft) => (draft.type === 'announcement' ? announcementItem(draft) : timerItem(draft));
+  const DRAFT_ITEM = { announcement: announcementItem, timer: timerItem, lowerthird: lowerThirdItem };
+  const draftItem = (draft) => DRAFT_ITEM[draft.type](draft);
 
   /** Put a draft on air right now. The plan is not touched. */
-  function showNow(draft) {
-    const item = draftItem(draft);
-    if (!tabs[draft.type].load(item)) { setStatus('That could not be loaded.', 'error'); return; }
+  async function showNow(draft) {
+    const tab = tabs[draft.type];
+    if (!tab.load(draftItem(draft))) { setStatus('That could not be loaded.', 'error'); return; }
     session.setTab(draft.type);
-    if (tabs[draft.type].markShown) tabs[draft.type].markShown();
+    if (tab.ready) await tab.ready();   // a lower third waits for its picture
+    if (tab.markShown) tab.markShown();
     session.show();
-    setStatus(draft.type === 'timer' ? 'Timer is running.' : 'Announcement is live.', 'success');
+    setStatus(SHOW_NOW_MESSAGE[draft.type], 'success');
   }
 
   const editor = initExtrasEditor({
+    logoStore,
     onAdd: (draft) => {
       edit((p) => addItem(p, draftItem(draft), currentId));
       setStatus('Added ' + (draft.title || draft.type) + ' to the plan.', 'success');
@@ -120,6 +124,7 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
       const count = library.get(item.songId).slides.length;
       return count + (count === 1 ? ' slide' : ' slides');
     }
+    if (item.type === 'lowerthird') return item.logo && !logoStore.has(item.logo) ? 'picture missing' : describeLowerThird(item);
     if (item.type === 'announcement') return 'announcement';
     if (item.type === 'timer') return describeTimerSpec(item);
     return item.translation || 'reading';
@@ -166,7 +171,7 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
     up.disabled = index === 0;
     const down = actionButton('btn btn-ghost', 'Move down', () => edit((p) => moveItem(p, item.id, 1)));
     down.disabled = index === plan.items.length - 1;
-    const canEdit = item.type === 'announcement' || item.type === 'timer';
+    const canEdit = item.type in DRAFT_ITEM;
     const editButton = canEdit ? [actionButton('btn btn-ghost', 'Edit', () => editor.open({ type: item.type, item }))] : [];
     actions.append(...editButton, up, down, actionButton('btn btn-danger', 'Remove', () => removeRow(item.id)));
     return actions;
@@ -233,7 +238,7 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
       if (item.type === 'song') {
         if (!tabs.songs.loadSong(item.songId)) { setStatus('Finish or discard the song you are editing first.', 'error'); return; }
         session.setTab('songs');
-      } else if (item.type === 'announcement' || item.type === 'timer') {
+      } else if (item.type === 'announcement' || item.type === 'timer' || item.type === 'lowerthird') {
         tabs[item.type].load(item);
         session.setTab(item.type);
       } else {
@@ -342,6 +347,7 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
 
   $('btn-plan-add-announcement').addEventListener('click', () => editor.open({ type: 'announcement' }));
   $('btn-plan-add-timer').addEventListener('click', () => editor.open({ type: 'timer' }));
+  $('btn-plan-add-lowerthird').addEventListener('click', () => editor.open({ type: 'lowerthird' }));
   btnNext.addEventListener('click', nextItem);
   $('btn-plan-add-song').addEventListener('click', () => startPicking('songs'));
   $('btn-plan-add-verse').addEventListener('click', () => startPicking('scripture'));
