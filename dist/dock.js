@@ -2895,7 +2895,7 @@ ${DELIMITER}
 
   // src/plan/logos.js
   var LOGO_MAX_SIDE = 160;
-  var LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,80}\.png$/i;
+  var LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,120}\.(png|jpe?g|webp|gif)$/i;
   var isValidLogoName = (name) => typeof name === "string" && LOGO_NAME.test(name) && !name.startsWith(".") && !name.includes("..");
   function logoFileName(sourceName, taken) {
     const stem = (sourceName || "").replace(/\.[^.]*$/, "").replace(/\./g, "_");
@@ -3075,23 +3075,41 @@ ${DELIMITER}
   }
   function createLogoStore({ onError = () => {
   }, encode = encodeLogo } = {}) {
-    let dir = null;
+    let libraryDir = null;
+    let pictureDir = null;
     let names = [];
+    const active = () => pictureDir || libraryDir;
+    async function refresh() {
+      const dir = active();
+      try {
+        names = dir ? await listNames(dir) : [];
+      } catch (err) {
+        onError(err);
+        names = [];
+      }
+    }
     return {
-      async attach(dirHandle) {
-        const logos = await dirHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
-        names = await listNames(logos);
-        dir = logos;
+      async attach(libraryHandle) {
+        libraryDir = await libraryHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
+        await refresh();
       },
       detach() {
-        dir = null;
-        names = [];
+        libraryDir = null;
+        if (!pictureDir) names = [];
       },
-      available: () => dir !== null,
+      /** Use a folder chosen by the person (null goes back to the library folder). */
+      async usePictureFolder(handle) {
+        pictureDir = handle;
+        await refresh();
+      },
+      pictureFolderName: () => pictureDir ? pictureDir.name : "",
+      refresh,
+      available: () => active() !== null,
       list: () => names.slice(),
       has: (name) => names.includes(name),
       async add(file) {
-        if (!dir) throw new Error("Choose a library folder first.");
+        const dir = active();
+        if (!dir) throw new Error("Choose a picture folder first.");
         const bytes = await encode(file);
         const name = logoFileName(file.name, names);
         await writeFileAtomic(dir, name, bytes);
@@ -3099,11 +3117,11 @@ ${DELIMITER}
         return name;
       },
       async read(name) {
+        const dir = active();
         if (!dir || !isValidLogoName(name)) return null;
         try {
           const handle = await dir.getFileHandle(name);
-          const file = await handle.getFile();
-          return logoDataUrl(new Uint8Array(await file.arrayBuffer()));
+          return logoDataUrl(await encode(await handle.getFile()));
         } catch (err) {
           if (err.name !== "NotFoundError") onError(err);
           return null;

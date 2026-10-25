@@ -2,9 +2,9 @@ import { safeFilename } from '../core/record-folder.js';
 
 export const LOGO_MAX_SIDE = 160;   // pictures are shrunk to this on their longest side
 
-const LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,80}\.png$/i;
+const LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,120}\.(png|jpe?g|webp|gif)$/i;
 
-/** A plain file name ending .png: no folders, no dot-dot, not hidden. */
+/** A plain image file name (png, jpg, jpeg, webp or gif): no folders, no dot-dot, not hidden. */
 export const isValidLogoName = (name) =>
   typeof name === 'string' && LOGO_NAME.test(name) && !name.startsWith('.') && !name.includes('..');
 
