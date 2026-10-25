@@ -1,3 +1,4 @@
+import { escapeHtml } from '../core/html.js';
 const CONTEXT = 30;
 const NO_MATCH = Object.freeze({ matched: false, via: null, excerpt: null, score: 0 });
 
@@ -72,7 +73,6 @@ export function searchSongs(songs, query) {
 }
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** HTML-safe text with every token occurrence wrapped in a mark element. */
 export function markTokens(text, tokens) {

@@ -1,18 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { setupOverlay } from './helpers.js';
 
-const KEY = 'obs-stage-display-state';
-
-async function setup(page) {
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/overlay.html');
-  let seq = Date.now();
-  const push = (state) => page.evaluate(
-    ([key, payload]) => localStorage.setItem(key, JSON.stringify(payload)),
-    [KEY, { action: 'show', version: 1, visible: true, title: '', body: '', reference: '', theme: 'frosted', animation: 'cut', ...state, seq: (seq += 1) }],
-  );
-  return { push, errors, stage: page.locator('#stage'), body: page.locator('#ov-body'), title: page.locator('#ov-title') };
-}
+const setup = (page) => setupOverlay(page, { title: '', body: '', reference: '', theme: 'frosted', animation: 'cut' });
 
 test.describe('overlay: announcement', () => {
   test('shows the title above the text and no reference', async ({ page }) => {

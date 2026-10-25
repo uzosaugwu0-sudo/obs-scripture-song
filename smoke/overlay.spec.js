@@ -1,21 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { setupOverlay } from './helpers.js';
 
-const KEY = 'obs-stage-display-state';
 const THEMES = ['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom'];
 const ANIMATIONS = ['rise', 'wipe', 'lines', 'cut'];
 const VERSE = 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.';
 
-async function setup(page) {
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/overlay.html');
-  let seq = Date.now();
-  const push = (state) => page.evaluate(
-    ([key, payload]) => localStorage.setItem(key, JSON.stringify(payload)),
-    [KEY, { action: 'show', kind: 'verse', version: 1, visible: true, body: VERSE, reference: 'John 3:16 KJV', ...state, seq: (seq += 1) }],
-  );
-  return { push, errors, stage: page.locator('#stage'), body: page.locator('#ov-body') };
-}
+const setup = (page) => setupOverlay(page, { kind: 'verse', body: VERSE, reference: 'John 3:16 KJV' });
 
 test('every theme and animation renders a verse and hides again', async ({ page }) => {
   test.setTimeout(120000);
