@@ -20,6 +20,7 @@ import { createLocalPlanStore } from '../plan/local-store.js';
 import { initPlanTab } from './plan/plan-tab.js';
 import { initExtrasTab } from './plan/extras-tab.js';
 import { createLogoStore } from './plan/logo-store.js';
+import { createPictureFolder } from './plan/picture-folder.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
@@ -83,6 +84,10 @@ function wireDiagnosticsPanel() {
 
     liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
     const logoStore = createLogoStore({ onError: report('logos') });
+    const pictureFolder = createPictureFolder({
+      logoStore, kv: openKv('obs-stage-pictures'), report: report('pictures'),
+      onChange: () => { if (tabs.plan) tabs.plan.render(); },
+    });
     const extras = initExtrasTab({ session, refresh: () => liveBar.refresh(), logoStore });
     tabs.announcement = extras.announcement;
     tabs.timer = extras.timer;
@@ -118,7 +123,7 @@ function wireDiagnosticsPanel() {
       library, setStatus: status.setStatus, report: report('songs'), onImported: () => tabs.songs.refreshList(),
     });
     tabs.plan = initPlanTab({
-      session, store: planStore, library, tabs, logoStore, setStatus: status.setStatus, showView,
+      session, store: planStore, library, tabs, logoStore, pictureFolder, setStatus: status.setStatus, showView,
       refresh: () => liveBar.refresh(), report: report('plans'),
     });
     libraryTools = initLibraryTools({
@@ -141,6 +146,7 @@ function wireDiagnosticsPanel() {
     initStyleTab({ session, store, setStatus: status.setStatus, report: report('settings') });
     transport.start();
     showView('plan');
+    pictureFolder.restore();
     await libraryTools.restore();
   } catch (err) {
     diagnostics.log('dock init', err);

@@ -2,7 +2,7 @@ import { $ } from '../shared/util.js';
 import { announcementFromInputs, timerFromInputs, lowerThirdFromInputs, MAX_ITEM_LOGO_DATA } from '../../plan/extras.js';
 import { encodeLogo, logoDataUrl } from './logo-store.js';
 
-const NO_FOLDER_HINT = 'No library folder is connected, so the picture is kept inside this lower third.';
+const NO_FOLDER_HINT = 'No picture folder is chosen, so a picture you add is kept inside this lower third.';
 const EMBEDDED = '@embedded';   // the drop-down value for a picture kept inside the lower third
 const NAMES = { announcement: 'announcement', timer: 'timer', lowerthird: 'lower third' };
 
@@ -11,7 +11,7 @@ const NAMES = { announcement: 'announcement', timer: 'timer', lowerthird: 'lower
  * and validates the fields; what to do with a valid draft (add, save, show now)
  * is decided by the callbacks.
  */
-export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
+export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow }) {
   const root = $('extras-editor'), heading = $('ed-heading'), titleField = $('ed-title-field'), title = $('ed-title'), text = $('ed-text'),
         announcementFields = $('ed-announcement-fields'), timerFields = $('ed-timer-fields'), lowerFields = $('ed-lowerthird-fields'),
         modeButtons = [...document.querySelectorAll('#ed-mode button')],
@@ -19,6 +19,8 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
         minutes = $('ed-minutes'), seconds = $('ed-seconds'), clock = $('ed-clock'),
         ltName = $('ed-lt-name'), ltInfo = $('ed-lt-info'), ltHide = $('ed-lt-hide'), ltLogo = $('ed-lt-logo'),
         ltAddLogo = $('ed-lt-add-logo'), ltFile = $('ed-lt-file'), ltLogoHint = $('ed-lt-logo-hint'),
+        ltFolderName = $('ed-lt-folder-name'), ltChooseFolder = $('ed-lt-choose-folder'),
+        ltReconnect = $('ed-lt-reconnect'), ltForgetFolder = $('ed-lt-forget-folder'),
         alignButtons = [...document.querySelectorAll('#ed-lt-align button')],
         hint = $('ed-hint'), btnAdd = $('ed-add'), btnShow = $('ed-show'), btnCancel = $('ed-cancel');
 
@@ -71,6 +73,24 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
     ltLogoHint.textContent = logoStore.available() ? '' : NO_FOLDER_HINT;
   }
 
+  /** Which picture folder is in use, and the buttons that change it. */
+  function renderFolder() {
+    const { state, name } = pictureFolder.status();
+    ltFolderName.textContent = state === 'none' ? 'No picture folder chosen.' : 'Picture folder: ' + name + (state === 'needs-permission' ? ' (needs your OK)' : '');
+    ltChooseFolder.classList.toggle('hidden', !pictureFolder.supported());
+    ltChooseFolder.textContent = state === 'none' ? 'Choose picture folder...' : 'Change...';
+    ltReconnect.classList.toggle('hidden', state !== 'needs-permission');
+    ltForgetFolder.classList.toggle('hidden', state === 'none');
+  }
+
+  /** Look in the folder again, so pictures added outside the app show, and keep the current choice. */
+  async function refreshLogos() {
+    await logoStore.refresh();
+    fillLogos(ltLogo.value || '');
+    renderFolder();
+    update();
+  }
+
   function update() {
     const result = read();
     hint.textContent = result.ok ? '' : result.hint;
@@ -104,6 +124,7 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
     setAlign(item && type === 'lowerthird' && item.align ? item.align : 'left');
     embedded = item && type === 'lowerthird' && item.logoData ? item.logoData : null;
     fillLogos(embedded ? EMBEDDED : (item && type === 'lowerthird' ? (item.logo || '') : ''));
+    if (type === 'lowerthird') { renderFolder(); refreshLogos(); }
     btnAdd.textContent = item ? 'Save' : 'Add to plan';
     root.classList.remove('hidden');
     update();
@@ -114,6 +135,16 @@ export function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
   ltLogo.addEventListener('change', update);
   modeButtons.forEach((button) => button.addEventListener('click', () => { setMode(button.dataset.value); update(); }));
   alignButtons.forEach((button) => button.addEventListener('click', () => { setAlign(button.dataset.value); update(); }));
+
+  ltChooseFolder.addEventListener('click', async () => {
+    try {
+      if (await pictureFolder.choose()) await refreshLogos();
+    } catch {
+      ltLogoHint.textContent = 'That folder could not be opened.';
+    }
+  });
+  ltReconnect.addEventListener('click', async () => { await pictureFolder.reconnect(); await refreshLogos(); });
+  ltForgetFolder.addEventListener('click', async () => { await pictureFolder.forget(); await refreshLogos(); });
 
   ltAddLogo.addEventListener('click', () => ltFile.click());
   ltFile.addEventListener('change', async () => {

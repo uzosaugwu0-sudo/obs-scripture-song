@@ -22,7 +22,7 @@ function make(tag, className, text) {
  * The Plan tab: a named list of songs and readings. It only decides what to
  * load; what is on air is still decided by Show and Hide in the live bar.
  */
-export function initPlanTab({ session, store, library, tabs, logoStore, setStatus, showView, refresh, report }) {
+export function initPlanTab({ session, store, library, tabs, logoStore, pictureFolder, setStatus, showView, refresh, report }) {
   const select = $('plan-select'), listEl = $('plan-list'), banner = $('plan-banner'),
         unreadableEl = $('plan-unreadable'), btnMenu = $('btn-plan-menu'), menu = $('plan-menu'),
         picker = $('picker-banner'), pickerText = $('picker-text'), btnNext = $('btn-next-item');
@@ -77,6 +77,7 @@ export function initPlanTab({ session, store, library, tabs, logoStore, setStatu
 
   const editor = initExtrasEditor({
     logoStore,
+    pictureFolder,
     onAdd: (draft) => {
       edit((p) => addItem(p, draftItem(draft), currentId));
       setStatus('Added ' + (draft.title || draft.type) + ' to the plan.', 'success');
