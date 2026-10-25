@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupOverlay } from './helpers.js';
+import { setupOverlay } from '../helpers.js';
 
 const setup = (page) => setupOverlay(page, { title: '', body: '', reference: '', theme: 'frosted', animation: 'cut' });
 

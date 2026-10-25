@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openPair, createSong, lookup, blockBibleApi } from './helpers.js';
+import { openPair, createSong, lookup, blockBibleApi } from '../helpers.js';
 
 const titles = (dock) => dock.locator('.plan-item .plan-title').allTextContents();
 

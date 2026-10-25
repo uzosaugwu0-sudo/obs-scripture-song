@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openPair } from './helpers.js';
+import { openPair } from '../helpers.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 const titles = (dock) => dock.locator('.plan-item .plan-title').allTextContents();

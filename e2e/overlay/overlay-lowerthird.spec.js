@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupOverlay } from './helpers.js';
+import { setupOverlay } from '../helpers.js';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const THEMES = ['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom'];

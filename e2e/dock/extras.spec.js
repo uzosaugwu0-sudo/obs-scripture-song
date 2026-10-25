@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openPair } from './helpers.js';
+import { openPair } from '../helpers.js';
 
 const titles = (dock) => dock.locator('.plan-item .plan-title').allTextContents();
 const bodyOf = (overlay) => overlay.locator('#ov-body');

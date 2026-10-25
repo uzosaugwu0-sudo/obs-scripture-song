@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openPair, createSong, blockBibleApi } from './helpers.js';
+import { openPair, createSong, blockBibleApi } from '../helpers.js';
 
 test.beforeEach(async ({ context }) => { await blockBibleApi(context); });
 
