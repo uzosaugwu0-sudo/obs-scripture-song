@@ -9,3 +9,6 @@
 .timer-controls { display: flex; align-items: center; gap: var(--space-2); }
 .timer-live-text { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#ed-lt-align { margin: 4px 0; }
+#ed-lt-logo { min-width: 0; }

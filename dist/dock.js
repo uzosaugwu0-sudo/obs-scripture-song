@@ -26,7 +26,7 @@
   }
 
   // src/dock/live/session.js
-  var KIND_OF = { scripture: "verse", songs: "song", announcement: "announcement", timer: "timer" };
+  var KIND_OF = { scripture: "verse", songs: "song", announcement: "announcement", timer: "timer", lowerthird: "lowerthird" };
   var TABS = Object.keys(KIND_OF);
   function createSession({ transport, readSettings, providers, onChange = () => {
   } }) {
@@ -68,7 +68,7 @@
       show() {
         const state = buildState("show", { forShow: true });
         transport.send(state);
-        s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body, timer: state.timer };
+        s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body, timer: state.timer, lowerthird: state.lowerthird };
         s.liveTab = s.activeTab;
         s.isLive = true;
         s.phase = "live";
@@ -128,7 +128,7 @@
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
-  var KINDS = Object.freeze(["verse", "song", "announcement", "timer"]);
+  var KINDS = Object.freeze(["verse", "song", "announcement", "timer", "lowerthird"]);
   var THEMES = Object.freeze(["frosted", "frosted-light", "pure", "sacred-light", "custom"]);
   var ANIMATIONS = Object.freeze(["rise", "wipe", "lines", "cut"]);
   var DEFAULTS = Object.freeze({
@@ -143,6 +143,8 @@
     // scripture reference
     timer: null,
     // timer kind only: { endAt } while running, { remainingMs } while paused
+    lowerthird: null,
+    // lowerthird kind only: { align, logo }
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -181,6 +183,15 @@
     if (typeof timer.endAt === "number") return Number.isFinite(timer.endAt);
     return typeof timer.remainingMs === "number" && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0;
   }
+  var LOWER_THIRD_ALIGNS = ["left", "center", "right"];
+  var MAX_LOGO_DATA_URL = 3e5;
+  var LOGO_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+  var isLogoDataUrl = (s) => typeof s === "string" && s.length <= MAX_LOGO_DATA_URL && LOGO_DATA_URL.test(s);
+  var textOf = (value) => typeof value === "string" ? value : "";
+  function cleanLowerThird(value) {
+    const v = value && typeof value === "object" ? value : {};
+    return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : "left", logo: isLogoDataUrl(v.logo) ? v.logo : null };
+  }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
     if (typeof raw.version === "number" && raw.version > STATE_VERSION) return null;
@@ -192,7 +203,14 @@
     if (!ACTIONS.includes(merged.action)) return null;
     if (!KINDS.includes(merged.kind)) return null;
     if (merged.kind === "timer" && merged.action !== "clear" && !validTimer(merged.timer)) return null;
-    return { ...merged, ...migrateLegacy(merged) };
+    if (merged.kind === "lowerthird" && merged.action === "show" && !textOf(merged.title).trim() && !textOf(merged.body).trim()) return null;
+    const result = { ...merged, ...migrateLegacy(merged) };
+    if (merged.kind === "lowerthird") {
+      result.title = textOf(merged.title);
+      result.body = textOf(merged.body);
+      result.lowerthird = cleanLowerThird(merged.lowerthird);
+    }
+    return result;
   }
 
   // src/transport/broadcast.js
@@ -420,22 +438,25 @@
     scripture: "Look up a verse first.",
     songs: "No slide text to display.",
     announcement: "Write the announcement first.",
-    timer: "Set up the timer first."
+    timer: "Set up the timer first.",
+    lowerthird: "Write the lower third first."
   };
   var LIVE_MSG = {
     scripture: "Verse is live.",
     songs: "Slide is live.",
     announcement: "Announcement is live.",
-    timer: "Timer is running."
+    timer: "Timer is running.",
+    lowerthird: "Lower third is live."
   };
+  var LIVE_NAME = { announcement: "Announcement", timer: "Timer", lowerthird: "Lower third" };
   function initLiveBar({ session, tabs, setStatus }) {
     const bar = $("live-bar"), pill = $("status-pill"), what = $("status-what"), previewText = $("preview-text"), previewSub = $("preview-sub"), planLine = $("plan-line"), btnPrev = $("btn-prev"), btnShow = $("btn-show"), btnHide = $("btn-hide"), btnNext = $("btn-next"), btnClear = $("btn-clear"), timerControls = $("timer-controls"), timerText = $("timer-live-text"), btnTimerPause = $("btn-timer-pause"), btnTimerReset = $("btn-timer-reset");
     const activeTab = () => tabs[session.activeTab] || null;
     function liveLabel() {
       if (session.phase !== "live") return "";
       if (session.liveTab === "scripture") return "Verse";
-      if (session.liveTab === "announcement" || session.liveTab === "timer") {
-        const name = session.liveTab === "timer" ? "Timer" : "Announcement";
+      if (LIVE_NAME[session.liveTab]) {
+        const name = LIVE_NAME[session.liveTab];
         const title2 = session.liveContent ? session.liveContent.title : "";
         return title2 ? name + " \xB7 " + title2 : name;
       }
@@ -470,11 +491,16 @@
       const tab = activeTab();
       if (tab) tab.step(dir);
     }
-    btnShow.addEventListener("click", () => {
+    btnShow.addEventListener("click", async () => {
       const tab = activeTab();
+      const name = session.activeTab;
       if (!tab || !tab.preview().has) {
-        setStatus(NEEDS[session.activeTab] || "Nothing to show.", "error");
+        setStatus(NEEDS[name] || "Nothing to show.", "error");
         return;
+      }
+      if (tab.ready) {
+        await tab.ready();
+        if (session.activeTab !== name) return;
       }
       if (tab.markShown) tab.markShown();
       session.show();
@@ -2249,23 +2275,24 @@ ${DELIMITER}
   function safeFilename(title, fallback = "song") {
     return (title || "untitled").replace(/[<>:"/|?*\x00-\x1f]/g, "_").split(BACKSLASH2).join("_").replace(/\s+/g, "_").replace(/_+/g, "_").slice(0, 80).replace(/^_+|_+$/g, "") || fallback;
   }
+  async function writeFileAtomic(dirHandle, name, data) {
+    const handle = await dirHandle.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
+    try {
+      await writable.write(data);
+      await writable.close();
+    } catch (err) {
+      try {
+        await writable.abort();
+      } catch {
+      }
+      throw err;
+    }
+  }
   function createRecordFolder(dirHandle, { isRecord, toRecord, nameOf, label = "song" }) {
     const fileOf = /* @__PURE__ */ new Map();
     const occupied = /* @__PURE__ */ new Set();
-    async function writeText(name, text) {
-      const handle = await dirHandle.getFileHandle(name, { create: true });
-      const writable = await handle.createWritable();
-      try {
-        await writable.write(text);
-        await writable.close();
-      } catch (err) {
-        try {
-          await writable.abort();
-        } catch {
-        }
-        throw err;
-      }
-    }
+    const writeText = (name, text) => writeFileAtomic(dirHandle, name, text);
     async function removeFile(name) {
       try {
         await dirHandle.removeEntry(name);
@@ -2706,6 +2733,7 @@ ${DELIMITER}
     if (!plan.items.some((i) => i.id === id)) return plan;
     return { ...plan, items: plan.items.map((i) => i.id === id ? { ...item, id } : i) };
   }
+  var lowerThirdItem = ({ name = "", info = "", align = "left", logo = null, hideAfter = null }, uid2 = uid) => ({ id: "i_" + uid2(), type: "lowerthird", name: name.trim(), info: info.trim(), align, logo, hideAfter });
 
   // src/plan/folder.js
   var PLANS_DIR = "plans";
@@ -2865,6 +2893,24 @@ ${DELIMITER}
     return hours > 0 ? hours + ":" + pad(minutes) + ":" + pad(seconds) : minutes + ":" + pad(seconds);
   }
 
+  // src/plan/logos.js
+  var LOGO_MAX_SIDE = 160;
+  var LOGO_NAME = /^[^\\/:*?"<>|\x00-\x1f]{1,80}\.png$/i;
+  var isValidLogoName = (name) => typeof name === "string" && LOGO_NAME.test(name) && !name.startsWith(".") && !name.includes("..");
+  function logoFileName(sourceName, taken) {
+    const stem = (sourceName || "").replace(/\.[^.]*$/, "").replace(/\./g, "_");
+    const base = (stem.trim() ? safeFilename(stem, "logo") : "logo").slice(0, 70).trim() || "logo";
+    const used = new Set(taken.map((n) => n.toLowerCase()));
+    let name = base + ".png";
+    for (let n = 2; used.has(name.toLowerCase()); n += 1) name = base + " (" + n + ").png";
+    return name;
+  }
+  function fitSize(width, height, max = LOGO_MAX_SIDE) {
+    if (!(width > 0) || !(height > 0)) return null;
+    const k = Math.max(width, height) > max ? max / Math.max(width, height) : 1;
+    return { width: Math.max(1, Math.round(width * k)), height: Math.max(1, Math.round(height * k)) };
+  }
+
   // src/plan/extras.js
   var MAX_TIMER_SECONDS = 359999;
   var CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -2912,6 +2958,34 @@ ${DELIMITER}
     if (total > MAX_TIMER_SECONDS) return { ok: false, hint: "The longest timer is 99:59:59." };
     return { ok: true, draft: { type: "timer", mode: "duration", seconds: total, title: label } };
   }
+  var MAX_HIDE_AFTER = 3600;
+  var ALIGNS = ["left", "center", "right"];
+  var textOrEmpty = (v) => typeof v === "string" ? v.trim() : "";
+  function isValidLowerThird(item) {
+    if (!item || typeof item !== "object") return false;
+    if (item.name !== void 0 && typeof item.name !== "string" || item.info !== void 0 && typeof item.info !== "string") return false;
+    if (!textOrEmpty(item.name) && !textOrEmpty(item.info)) return false;
+    if (item.align !== void 0 && !ALIGNS.includes(item.align)) return false;
+    if (item.logo != null && !isValidLogoName(item.logo)) return false;
+    if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;
+    return true;
+  }
+  var describeLowerThird = (item) => item.hideAfter ? "hides after " + item.hideAfter + "s" : "stays";
+  function lowerThirdFromInputs({ name = "", info = "", align = "left", logo = "", hideAfter = "" }) {
+    const n = name.trim();
+    const i = info.trim();
+    if (!n && !i) return { ok: false, hint: "Enter a name or some info." };
+    const raw = hideAfter.trim();
+    let seconds = null;
+    if (raw !== "") {
+      seconds = WHOLE_NUMBER.test(raw) ? Number(raw) : NaN;
+      if (!(seconds >= 1 && seconds <= MAX_HIDE_AFTER)) return { ok: false, hint: "Hide after must be 1 to 3600 seconds." };
+    }
+    return {
+      ok: true,
+      draft: { type: "lowerthird", name: n, info: i, align: ALIGNS.includes(align) ? align : "left", logo: logo || null, hideAfter: seconds }
+    };
+  }
 
   // src/plan/cursor.js
   var titleOk = (item) => item.title === void 0 || typeof item.title === "string";
@@ -2920,6 +2994,7 @@ ${DELIMITER}
     if (item.type === "reading") return typeof item.ref === "string" && item.ref.trim() ? "ok" : "unsupported";
     if (item.type === "announcement") return typeof item.body === "string" && item.body.trim() && titleOk(item) ? "ok" : "unsupported";
     if (item.type === "timer") return isValidTimerSpec(item) && titleOk(item) ? "ok" : "unsupported";
+    if (item.type === "lowerthird") return isValidLowerThird(item) ? "ok" : "unsupported";
     return "unsupported";
   }
   function itemTitle(item, library) {
@@ -2928,6 +3003,7 @@ ${DELIMITER}
     if (status !== "ok") return "Unsupported item";
     if (item.type === "reading") return item.ref;
     if (item.type === "announcement") return (item.title || "").trim() || item.body.trim().split("\n")[0];
+    if (item.type === "lowerthird") return (item.name || "").trim() || (item.info || "").trim();
     return (item.title || "").trim() || describeTimerSpec(item);
   }
   var indexOfItem = (plan, id) => id === null ? -1 : plan.items.findIndex((i) => i.id === id);
@@ -2958,23 +3034,50 @@ ${DELIMITER}
   }
 
   // src/dock/plan/extras-editor.js
-  function initExtrasEditor({ onAdd, onSave, onShowNow }) {
-    const root = $("extras-editor"), heading = $("ed-heading"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
+  var NO_FOLDER_HINT = "Choose a library folder in Songs > Library tools to use pictures.";
+  var NAMES = { announcement: "announcement", timer: "timer", lowerthird: "lower third" };
+  function initExtrasEditor({ logoStore, onAdd, onSave, onShowNow }) {
+    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
     let type = "announcement";
     let mode = "duration";
+    let align = "left";
     let editingId = null;
     function read() {
-      return type === "announcement" ? announcementFromInputs({ title: title.value, body: text.value }) : timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
+      if (type === "announcement") return announcementFromInputs({ title: title.value, body: text.value });
+      if (type === "timer") return timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
+      return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value, hideAfter: ltHide.value });
     }
-    function setMode(next) {
-      mode = next;
-      modeButtons.forEach((button) => {
-        const on = button.dataset.value === mode;
+    function setPressed(buttons, value) {
+      buttons.forEach((button) => {
+        const on = button.dataset.value === value;
         button.classList.toggle("on", on);
         button.setAttribute("aria-pressed", String(on));
       });
+    }
+    function setMode(next) {
+      mode = next;
+      setPressed(modeButtons, mode);
       durationFields.classList.toggle("hidden", mode !== "duration");
       clockFields.classList.toggle("hidden", mode !== "clock");
+    }
+    function setAlign(next) {
+      align = next;
+      setPressed(alignButtons, align);
+    }
+    function fillLogos(selected) {
+      const names = logoStore.list();
+      const choices = selected && !names.includes(selected) ? [...names, selected] : names;
+      ltLogo.replaceChildren(...["", ...choices].map((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name === "" ? "No picture" : names.includes(name) ? name : name + " (missing)";
+        return option;
+      }));
+      ltLogo.value = selected || "";
+      const usable = logoStore.available();
+      ltLogo.disabled = !usable;
+      ltAddLogo.disabled = !usable;
+      ltLogoHint.textContent = usable ? "" : NO_FOLDER_HINT;
     }
     function update() {
       const result = read();
@@ -2989,26 +3092,51 @@ ${DELIMITER}
     function open({ type: nextType, item = null }) {
       type = nextType;
       editingId = item ? item.id : null;
-      heading.textContent = (item ? "Edit " : "New ") + (type === "announcement" ? "announcement" : "timer");
+      heading.textContent = (item ? "Edit " : "New ") + NAMES[type];
+      titleField.classList.toggle("hidden", type === "lowerthird");
       announcementFields.classList.toggle("hidden", type !== "announcement");
       timerFields.classList.toggle("hidden", type !== "timer");
-      title.value = item ? item.title || "" : "";
+      lowerFields.classList.toggle("hidden", type !== "lowerthird");
+      title.value = item && type !== "lowerthird" ? item.title || "" : "";
       text.value = item && type === "announcement" ? item.body || "" : "";
       setMode(item && item.mode === "clock" ? "clock" : "duration");
       const total = item && item.mode === "duration" && Number.isInteger(item.seconds) && item.seconds > 0 ? item.seconds : 0;
       minutes.value = total ? String(Math.floor(total / 60)) : "";
       seconds.value = total ? String(total % 60) : "";
       clock.value = item && item.mode === "clock" ? item.at || "" : "";
+      ltName.value = item && type === "lowerthird" ? item.name || "" : "";
+      ltInfo.value = item && type === "lowerthird" ? item.info || "" : "";
+      ltHide.value = item && type === "lowerthird" && item.hideAfter ? String(item.hideAfter) : "";
+      setAlign(item && type === "lowerthird" && item.align ? item.align : "left");
+      fillLogos(item && type === "lowerthird" ? item.logo || "" : "");
       btnAdd.textContent = item ? "Save" : "Add to plan";
       root.classList.remove("hidden");
       update();
-      (type === "announcement" ? text : minutes).focus();
+      ({ announcement: text, timer: minutes, lowerthird: ltName })[type].focus();
     }
-    [title, text, minutes, seconds, clock].forEach((field) => field.addEventListener("input", update));
+    [title, text, minutes, seconds, clock, ltName, ltInfo, ltHide].forEach((field) => field.addEventListener("input", update));
+    ltLogo.addEventListener("change", update);
     modeButtons.forEach((button) => button.addEventListener("click", () => {
       setMode(button.dataset.value);
       update();
     }));
+    alignButtons.forEach((button) => button.addEventListener("click", () => {
+      setAlign(button.dataset.value);
+      update();
+    }));
+    ltAddLogo.addEventListener("click", () => ltFile.click());
+    ltFile.addEventListener("change", async () => {
+      const file = ltFile.files[0];
+      ltFile.value = "";
+      if (!file) return;
+      try {
+        const name = await logoStore.add(file);
+        fillLogos(name);
+        update();
+      } catch (err) {
+        ltLogoHint.textContent = err.message || "That picture could not be added.";
+      }
+    });
     btnAdd.addEventListener("click", () => {
       const result = read();
       if (!result.ok) return;
@@ -3033,7 +3161,8 @@ ${DELIMITER}
   }
 
   // src/dock/plan/plan-tab.js
-  var TYPE_ICON = { song: "\u266B", reading: "\u271D", announcement: "\u270E", timer: "\u23F1" };
+  var TYPE_ICON = { song: "\u266B", reading: "\u271D", announcement: "\u270E", timer: "\u23F1", lowerthird: "\u25AD" };
+  var SHOW_NOW_MESSAGE = { announcement: "Announcement is live.", timer: "Timer is running.", lowerthird: "Lower third is live." };
   var BANNER_TEXT = {
     local: "Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.",
     "folder-lost": "Lost access to the library folder. Plans are safe in this browser. Open Songs, Library tools and choose Reconnect."
@@ -3044,7 +3173,7 @@ ${DELIMITER}
     if (text !== void 0) el.textContent = text;
     return el;
   }
-  function initPlanTab({ session, store, library, tabs, setStatus, showView, refresh, report: report2 }) {
+  function initPlanTab({ session, store, library, tabs, logoStore, setStatus, showView, refresh, report: report2 }) {
     const select = $("plan-select"), listEl = $("plan-list"), banner = $("plan-banner"), unreadableEl = $("plan-unreadable"), btnMenu = $("btn-plan-menu"), menu = $("plan-menu"), picker = $("picker-banner"), pickerText = $("picker-text"), btnNext = $("btn-next-item");
     let plan = store.get(store.lastId()) || store.list()[0] || createPlan();
     let currentId = null;
@@ -3070,19 +3199,25 @@ ${DELIMITER}
       store.setLastId(plan.id);
       render();
     });
-    const draftItem = (draft) => draft.type === "announcement" ? announcementItem(draft) : timerItem(draft);
-    function showNow(draft) {
-      const item = draftItem(draft);
-      if (!tabs[draft.type].load(item)) {
+    const DRAFT_ITEM = { announcement: announcementItem, timer: timerItem, lowerthird: lowerThirdItem };
+    const draftItem = (draft) => DRAFT_ITEM[draft.type](draft);
+    async function showNow(draft) {
+      const tab = tabs[draft.type];
+      if (!tab.load(draftItem(draft))) {
         setStatus("That could not be loaded.", "error");
         return;
       }
       session.setTab(draft.type);
-      if (tabs[draft.type].markShown) tabs[draft.type].markShown();
+      if (tab.ready) {
+        await tab.ready();
+        if (session.activeTab !== draft.type) return;
+      }
+      if (tab.markShown) tab.markShown();
       session.show();
-      setStatus(draft.type === "timer" ? "Timer is running." : "Announcement is live.", "success");
+      setStatus(SHOW_NOW_MESSAGE[draft.type], "success");
     }
     const editor = initExtrasEditor({
+      logoStore,
       onAdd: (draft) => {
         edit((p) => addItem(p, draftItem(draft), currentId));
         setStatus("Added " + (draft.title || draft.type) + " to the plan.", "success");
@@ -3129,6 +3264,7 @@ ${DELIMITER}
         const count = library.get(item.songId).slides.length;
         return count + (count === 1 ? " slide" : " slides");
       }
+      if (item.type === "lowerthird") return item.logo && !logoStore.has(item.logo) ? "picture missing" : describeLowerThird(item);
       if (item.type === "announcement") return "announcement";
       if (item.type === "timer") return describeTimerSpec(item);
       return item.translation || "reading";
@@ -3174,7 +3310,7 @@ ${DELIMITER}
       up.disabled = index === 0;
       const down = actionButton("btn btn-ghost", "Move down", () => edit((p) => moveItem(p, item.id, 1)));
       down.disabled = index === plan.items.length - 1;
-      const canEdit = item.type === "announcement" || item.type === "timer";
+      const canEdit = item.type in DRAFT_ITEM;
       const editButton = canEdit ? [actionButton("btn btn-ghost", "Edit", () => editor.open({ type: item.type, item }))] : [];
       actions.append(...editButton, up, down, actionButton("btn btn-danger", "Remove", () => removeRow(item.id)));
       return actions;
@@ -3239,7 +3375,7 @@ ${DELIMITER}
             return;
           }
           session.setTab("songs");
-        } else if (item.type === "announcement" || item.type === "timer") {
+        } else if (item.type === "announcement" || item.type === "timer" || item.type === "lowerthird") {
           tabs[item.type].load(item);
           session.setTab(item.type);
         } else {
@@ -3351,6 +3487,7 @@ ${DELIMITER}
     });
     $("btn-plan-add-announcement").addEventListener("click", () => editor.open({ type: "announcement" }));
     $("btn-plan-add-timer").addEventListener("click", () => editor.open({ type: "timer" }));
+    $("btn-plan-add-lowerthird").addEventListener("click", () => editor.open({ type: "lowerthird" }));
     btnNext.addEventListener("click", nextItem);
     $("btn-plan-add-song").addEventListener("click", () => startPicking("songs"));
     $("btn-plan-add-verse").addEventListener("click", () => startPicking("scripture"));
@@ -3437,7 +3574,15 @@ ${DELIMITER}
   // src/dock/plan/extras-tab.js
   var DISPLAY_TICK_MS = 1e3;
   var NOTHING = { has: false, text: "Nothing loaded", canNav: false };
-  function initExtrasTab({ session, refresh, now = Date.now, startTicker = true }) {
+  function initExtrasTab({
+    session,
+    refresh,
+    now = Date.now,
+    startTicker = true,
+    logoStore = null,
+    setTimer = setTimeout,
+    clearTimer = clearTimeout
+  }) {
     const run = createTimerRun(now);
     let announcement = { title: "", body: "" };
     const announcementTab = {
@@ -3511,12 +3656,134 @@ ${DELIMITER}
         if (isLiveTimer() && run.reset()) pushLive();
       }
     };
+    let lowerThird = { name: "", info: "", align: "left", logo: null, hideAfter: null };
+    let logoData = null;
+    let logoPending = Promise.resolve();
+    let hideToken = 0;
+    let hideHandle = null;
+    const lowerThirdTab = {
+      load(item) {
+        const wanted = item.logo || null;
+        lowerThird = { name: (item.name || "").trim(), info: (item.info || "").trim(), align: item.align || "left", logo: wanted, hideAfter: item.hideAfter || null };
+        logoData = null;
+        logoPending = wanted && logoStore ? logoStore.read(wanted).catch(() => null).then((data) => {
+          if (lowerThird.logo === wanted) logoData = data;
+          refresh();
+        }) : Promise.resolve();
+        refresh();
+        return lowerThird.name.length > 0 || lowerThird.info.length > 0;
+      },
+      /** Show waits for this, so a lower third never goes on air before its picture has been read. */
+      ready: async () => {
+        let waited;
+        do {
+          waited = logoPending;
+          await waited;
+        } while (waited !== logoPending);
+      },
+      getContent: () => ({ title: lowerThird.name, body: lowerThird.info, lowerthird: { align: lowerThird.align, logo: logoData } }),
+      preview() {
+        const text = lowerThird.name || lowerThird.info;
+        if (!text) return { ...NOTHING, sub: "Lower third" };
+        return { has: true, text, sub: "Lower third" + (lowerThird.name && lowerThird.info ? " \xB7 " + lowerThird.info : ""), canNav: false };
+      },
+      /** Show arms the automatic hide. It only fires for this Show, and only while this lower third is still on air. */
+      markShown() {
+        hideToken += 1;
+        const mine = hideToken;
+        if (hideHandle !== null) {
+          clearTimer(hideHandle);
+          hideHandle = null;
+        }
+        if (!lowerThird.hideAfter) return;
+        hideHandle = setTimer(() => {
+          hideHandle = null;
+          if (mine === hideToken && session.isLive && session.liveTab === "lowerthird") session.hide();
+        }, lowerThird.hideAfter * 1e3);
+      },
+      step() {
+      }
+    };
     if (startTicker) {
       setInterval(() => {
         if (session.activeTab === "timer" || session.liveTab === "timer") refresh();
       }, DISPLAY_TICK_MS);
     }
-    return { announcement: announcementTab, timer: timerTab };
+    return { announcement: announcementTab, timer: timerTab, lowerthird: lowerThirdTab };
+  }
+
+  // src/dock/plan/logo-store.js
+  var LOGOS_DIR = "logos";
+  var MAX_PICTURE_BYTES = 10 * 1024 * 1024;
+  async function encodeLogo(file) {
+    if (!file || !String(file.type).startsWith("image/")) throw new Error("That file is not a picture.");
+    if (file.size > MAX_PICTURE_BYTES) throw new Error("That picture is too large.");
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch {
+      throw new Error("That picture could not be read.");
+    }
+    const size = fitSize(bitmap.width, bitmap.height);
+    if (!size) throw new Error("That picture could not be read.");
+    const canvas = document.createElement("canvas");
+    canvas.width = size.width;
+    canvas.height = size.height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, size.width, size.height);
+    bitmap.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("That picture could not be converted.");
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (Math.ceil(bytes.length / 3) * 4 > MAX_LOGO_DATA_URL) throw new Error("That picture is too detailed. Try a simpler one.");
+    return bytes;
+  }
+  function toBase64(bytes) {
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 32768) text += String.fromCharCode(...bytes.subarray(i, i + 32768));
+    return btoa(text);
+  }
+  async function listNames(dir) {
+    const names = [];
+    for await (const entry of dir.values()) if (entry.kind === "file" && isValidLogoName(entry.name)) names.push(entry.name);
+    return names.sort();
+  }
+  function createLogoStore({ onError = () => {
+  }, encode = encodeLogo } = {}) {
+    let dir = null;
+    let names = [];
+    return {
+      async attach(dirHandle) {
+        const logos = await dirHandle.getDirectoryHandle(LOGOS_DIR, { create: true });
+        names = await listNames(logos);
+        dir = logos;
+      },
+      detach() {
+        dir = null;
+        names = [];
+      },
+      available: () => dir !== null,
+      list: () => names.slice(),
+      has: (name) => names.includes(name),
+      async add(file) {
+        if (!dir) throw new Error("Choose a library folder first.");
+        const bytes = await encode(file);
+        const name = logoFileName(file.name, names);
+        await writeFileAtomic(dir, name, bytes);
+        names = [...names, name].sort();
+        return name;
+      },
+      async read(name) {
+        if (!dir || !isValidLogoName(name)) return null;
+        try {
+          const handle = await dir.getFileHandle(name);
+          const file = await handle.getFile();
+          return "data:image/png;base64," + toBase64(new Uint8Array(await file.arrayBuffer()));
+        } catch (err) {
+          if (err.name !== "NotFoundError") onError(err);
+          return null;
+        }
+      }
+    };
   }
 
   // src/dock/main.js
@@ -3563,7 +3830,8 @@ ${DELIMITER}
           scripture: () => tabs.scripture ? tabs.scripture.getContent() : EMPTY_SCRIPTURE,
           songs: () => tabs.songs ? tabs.songs.getContent() : EMPTY_SONG,
           announcement: () => tabs.announcement ? tabs.announcement.getContent() : EMPTY_SONG,
-          timer: () => tabs.timer ? tabs.timer.getContent() : { ...EMPTY_SONG, timer: { remainingMs: 0 } }
+          timer: () => tabs.timer ? tabs.timer.getContent() : { ...EMPTY_SONG, timer: { remainingMs: 0 } },
+          lowerthird: () => tabs.lowerthird ? tabs.lowerthird.getContent() : { ...EMPTY_SONG, lowerthird: { align: "left", logo: null } }
         },
         onChange: () => {
           if (liveBar) liveBar.refresh();
@@ -3571,9 +3839,11 @@ ${DELIMITER}
         }
       });
       liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
-      const extras = initExtrasTab({ session, refresh: () => liveBar.refresh() });
+      const logoStore = createLogoStore({ onError: report("logos") });
+      const extras = initExtrasTab({ session, refresh: () => liveBar.refresh(), logoStore });
       tabs.announcement = extras.announcement;
       tabs.timer = extras.timer;
+      tabs.lowerthird = extras.lowerthird;
       const scripture = createScriptureApi({
         cache: idbCache(openKv("obs-stage-cache"), report("cache")),
         offline: createOfflineProvider()
@@ -3622,6 +3892,7 @@ ${DELIMITER}
         store: planStore,
         library,
         tabs,
+        logoStore,
         setStatus: status.setStatus,
         showView,
         refresh: () => liveBar.refresh(),
@@ -3637,8 +3908,17 @@ ${DELIMITER}
           tabs.plan.render();
         },
         onFolderChange: async (handle) => {
-          if (handle) await planStore.attach(handle);
-          else planStore.detach();
+          if (handle) {
+            await planStore.attach(handle);
+            try {
+              await logoStore.attach(handle);
+            } catch (err) {
+              report("logos")(err);
+            }
+          } else {
+            planStore.detach();
+            logoStore.detach();
+          }
           tabs.plan.reload();
         }
       });

@@ -6,6 +6,19 @@ export function safeFilename(title, fallback = 'song') {
     .replace(/_+/g, '_').slice(0, 80).replace(/^_+|_+$/g, '') || fallback;
 }
 
+/** Write a file through a swap file, so a crash mid-write leaves the previous version intact. */
+export async function writeFileAtomic(dirHandle, name, data) {
+  const handle   = await dirHandle.getFileHandle(name, { create: true });
+  const writable = await handle.createWritable();
+  try {
+    await writable.write(data);
+    await writable.close();
+  } catch (err) {
+    try { await writable.abort(); } catch { /* stream already closed; surface the original error */ }
+    throw err;
+  }
+}
+
 /**
  * One JSON file per record in a user-chosen directory. createWritable() writes
  * to a swap file and only replaces the original on close(), so a crash
@@ -16,17 +29,7 @@ export function createRecordFolder(dirHandle, { isRecord, toRecord, nameOf, labe
   const fileOf   = new Map();   // record id to file name
   const occupied = new Set();   // lower-cased names of files that are not ours
 
-  async function writeText(name, text) {
-    const handle   = await dirHandle.getFileHandle(name, { create: true });
-    const writable = await handle.createWritable();
-    try {
-      await writable.write(text);
-      await writable.close();
-    } catch (err) {
-      try { await writable.abort(); } catch { /* stream already closed; surface the original error */ }
-      throw err;
-    }
-  }
+  const writeText = (name, text) => writeFileAtomic(dirHandle, name, text);
 
   async function removeFile(name) {
     try {

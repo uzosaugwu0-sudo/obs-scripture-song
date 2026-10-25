@@ -6,9 +6,10 @@ import {
 import { splitLines } from './split-lines.js';
 import { remainingMs, formatClock, isStale } from './timer-clock.js';
 
-const KIND_CLASSES  = ['kind-verse', 'kind-song', 'kind-announcement', 'kind-timer'];
+const KIND_CLASSES  = ['kind-verse', 'kind-song', 'kind-announcement', 'kind-timer', 'kind-lowerthird'];
 const THEME_CLASSES = ['theme-frosted', 'theme-frosted-light', 'theme-pure', 'theme-sacred-light', 'theme-custom'];
 const POS_CLASSES   = ['pos-bottom', 'pos-center', 'pos-top'];
+const ALIGN_CLASSES = ['lt-left', 'lt-center', 'lt-right'];
 const SIZE_CLASSES  = ['fs-sm', 'fs-md', 'fs-lg', 'fs-xl'];
 const ANIM_CLASSES  = ['anim-rise', 'anim-wipe', 'anim-lines', 'anim-cut'];
 const CARD_STATES   = ['card-in', 'card-out'];
@@ -24,6 +25,9 @@ const MAX_STAGGER_S  = 0.35;
 const LINES_BUDGET_S = 2.4;
 const TIMER_TICK_MS = 250;
 const TIMER_SCALE   = 1.6;   // the digits are set a little larger than body text
+const LT_NAME_SCALE = 0.9;    // lower third text sizes, as a fraction of the body size
+const LT_INFO_SCALE = 0.56;
+const LT_LOGO_SCALE = 1.2;    // picture height, as a multiple of the two text lines together
 
 export function createRenderer(doc = document, onError = () => {}) {
   const stage   = doc.getElementById('stage');
@@ -32,6 +36,7 @@ export function createRenderer(doc = document, onError = () => {}) {
   const titleEl = doc.getElementById('ov-title');
   const bodyEl  = doc.getElementById('ov-body');
   const refEl   = doc.getElementById('ov-ref');
+  const logoEl  = doc.getElementById('ov-logo');
 
   // Bumped by every valid command. Deferred steps compare against it, so the
   // last command always wins and an interrupted animation cannot leave the
@@ -93,7 +98,9 @@ export function createRenderer(doc = document, onError = () => {}) {
 
     setClass(KIND_CLASSES,  'kind-' + kind);
     setClass(THEME_CLASSES, 'theme-' + theme);
-    setClass(POS_CLASSES,   'pos-' + (state.position || 'bottom'));
+    setClass(POS_CLASSES,   'pos-' + (kind === 'lowerthird' ? 'bottom' : (state.position || 'bottom')));
+    ALIGN_CLASSES.forEach((c) => stage.classList.remove(c));
+    if (kind === 'lowerthird') stage.classList.add('lt-' + state.lowerthird.align);
     setClass(SIZE_CLASSES,  sizeClass);
     setClass(ANIM_CLASSES,  'anim-' + state.animation);
     if (state.animation !== 'lines') stage.classList.remove('lines-go');
@@ -127,8 +134,9 @@ export function createRenderer(doc = document, onError = () => {}) {
 
     if (theme === 'custom') {
       const accent = colors.accent || '#a78bfa';
-      bodyEl.style.color  = colors.text || '#ffffff';
-      titleEl.style.color = accent;
+      const swap = kind === 'lowerthird';   // a lower third puts the name in the text colour and the info in the accent
+      bodyEl.style.color  = swap ? accent : (colors.text || '#ffffff');
+      titleEl.style.color = swap ? (colors.text || '#ffffff') : accent;
       refEl.style.color   = accent;
       card.style.setProperty('--accent', accent);
     } else {
@@ -141,7 +149,7 @@ export function createRenderer(doc = document, onError = () => {}) {
     card.style.fontFamily  = "'" + font + "', 'Open Sans', Georgia, serif";
     bodyEl.style.fontStyle = state.italic ? 'italic' : 'normal';
 
-    const hideTitle = kind === 'verse' || state.showTitle === false || (kind !== 'song' && !state.title);
+    const hideTitle = kind === 'verse' || (kind !== 'lowerthird' && state.showTitle === false) || (kind !== 'song' && !state.title);
     const hideRef   = kind !== 'verse' || state.showReference === false;
     titleEl.style.display = hideTitle ? 'none' : '';
     refEl.style.display   = hideRef   ? 'none' : '';
@@ -154,6 +162,13 @@ export function createRenderer(doc = document, onError = () => {}) {
     card.style.paddingBottom = Math.round(24 * scale) + 'px';
     card.style.paddingLeft   = '52px';
     card.style.paddingRight  = '52px';
+    if (kind === 'lowerthird') {
+      card.style.minHeight     = '';
+      card.style.paddingTop    = Math.round(14 * scale) + 'px';
+      card.style.paddingBottom = Math.round(14 * scale) + 'px';
+      card.style.paddingLeft   = '20px';
+      card.style.paddingRight  = '28px';
+    }
 
     const labelRem = (LABEL_REM[sizeClass] || 1.10) * scale;
     titleEl.style.fontSize = labelRem + 'rem';
@@ -164,12 +179,24 @@ export function createRenderer(doc = document, onError = () => {}) {
   }
 
   function fillContent(state) {
+    const logo = state.kind === 'lowerthird' ? state.lowerthird.logo : null;
+    if (logo) logoEl.src = logo; else logoEl.removeAttribute('src');
+    stage.classList.toggle('has-logo', !!logo);
     const titled = state.kind !== 'verse';
     titleEl.textContent = titled ? (state.title || '') : '';
     refEl.textContent   = state.kind === 'verse' ? (state.reference || '') : '';
     const body = state.body || '';
     bodyEl.setAttribute('aria-label', state.kind === 'timer' ? (state.title || 'Timer') : body);
 
+    if (state.kind === 'lowerthird') {
+      const base = computeBodyFontSize('', 'fs-' + (state.fontSize || 'md'), getScale(state));
+      titleEl.style.fontSize = Math.round(base * LT_NAME_SCALE) + 'px';
+      bodyEl.style.fontSize  = Math.round(base * LT_INFO_SCALE) + 'px';
+      bodyEl.textContent = body;
+      bodyEl.style.removeProperty('--stagger');
+      logoEl.style.height = Math.round(base * (LT_NAME_SCALE + LT_INFO_SCALE) * LT_LOGO_SCALE) + 'px';
+      return;
+    }
     if (state.kind === 'timer') {
       paintClock(state.timer);
       bodyEl.style.removeProperty('--stagger');

@@ -1,5 +1,5 @@
 // Tab name to the kind of thing it puts on screen.
-const KIND_OF = { scripture: 'verse', songs: 'song', announcement: 'announcement', timer: 'timer' };
+const KIND_OF = { scripture: 'verse', songs: 'song', announcement: 'announcement', timer: 'timer', lowerthird: 'lowerthird' };
 const TABS = Object.keys(KIND_OF);
 
 /**
@@ -44,7 +44,7 @@ export function createSession({ transport, readSettings, providers, onChange = (
     show() {
       const state = buildState('show', { forShow: true });
       transport.send(state);
-      s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body, timer: state.timer };
+      s.liveContent = { kind: state.kind, title: state.title, reference: state.reference, body: state.body, timer: state.timer, lowerthird: state.lowerthird };
       s.liveTab = s.activeTab;
       s.isLive = true;
       s.phase = 'live';

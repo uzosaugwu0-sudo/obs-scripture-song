@@ -1,4 +1,4 @@
-import { isValidTimerSpec, describeTimerSpec } from './extras.js';
+import { isValidTimerSpec, describeTimerSpec, isValidLowerThird } from './extras.js';
 
 const titleOk = (item) => item.title === undefined || typeof item.title === 'string';
 
@@ -7,6 +7,7 @@ export function itemStatus(item, library) {
   if (item.type === 'reading') return typeof item.ref === 'string' && item.ref.trim() ? 'ok' : 'unsupported';
   if (item.type === 'announcement') return typeof item.body === 'string' && item.body.trim() && titleOk(item) ? 'ok' : 'unsupported';
   if (item.type === 'timer') return isValidTimerSpec(item) && titleOk(item) ? 'ok' : 'unsupported';
+  if (item.type === 'lowerthird') return isValidLowerThird(item) ? 'ok' : 'unsupported';
   return 'unsupported';
 }
 
@@ -16,6 +17,7 @@ export function itemTitle(item, library) {
   if (status !== 'ok') return 'Unsupported item';
   if (item.type === 'reading') return item.ref;
   if (item.type === 'announcement') return (item.title || '').trim() || item.body.trim().split('\n')[0];
+  if (item.type === 'lowerthird') return (item.name || '').trim() || (item.info || '').trim();
   return (item.title || '').trim() || describeTimerSpec(item);
 }
 

@@ -2,7 +2,7 @@
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
-  var KINDS = Object.freeze(["verse", "song", "announcement", "timer"]);
+  var KINDS = Object.freeze(["verse", "song", "announcement", "timer", "lowerthird"]);
   var THEMES = Object.freeze(["frosted", "frosted-light", "pure", "sacred-light", "custom"]);
   var ANIMATIONS = Object.freeze(["rise", "wipe", "lines", "cut"]);
   var DEFAULTS = Object.freeze({
@@ -17,6 +17,8 @@
     // scripture reference
     timer: null,
     // timer kind only: { endAt } while running, { remainingMs } while paused
+    lowerthird: null,
+    // lowerthird kind only: { align, logo }
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -55,6 +57,15 @@
     if (typeof timer.endAt === "number") return Number.isFinite(timer.endAt);
     return typeof timer.remainingMs === "number" && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0;
   }
+  var LOWER_THIRD_ALIGNS = ["left", "center", "right"];
+  var MAX_LOGO_DATA_URL = 3e5;
+  var LOGO_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+  var isLogoDataUrl = (s) => typeof s === "string" && s.length <= MAX_LOGO_DATA_URL && LOGO_DATA_URL.test(s);
+  var textOf = (value) => typeof value === "string" ? value : "";
+  function cleanLowerThird(value) {
+    const v = value && typeof value === "object" ? value : {};
+    return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : "left", logo: isLogoDataUrl(v.logo) ? v.logo : null };
+  }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
     if (typeof raw.version === "number" && raw.version > STATE_VERSION) return null;
@@ -66,7 +77,14 @@
     if (!ACTIONS.includes(merged.action)) return null;
     if (!KINDS.includes(merged.kind)) return null;
     if (merged.kind === "timer" && merged.action !== "clear" && !validTimer(merged.timer)) return null;
-    return { ...merged, ...migrateLegacy(merged) };
+    if (merged.kind === "lowerthird" && merged.action === "show" && !textOf(merged.title).trim() && !textOf(merged.body).trim()) return null;
+    const result = { ...merged, ...migrateLegacy(merged) };
+    if (merged.kind === "lowerthird") {
+      result.title = textOf(merged.title);
+      result.body = textOf(merged.body);
+      result.lowerthird = cleanLowerThird(merged.lowerthird);
+    }
+    return result;
   }
 
   // src/transport/broadcast.js
@@ -294,9 +312,10 @@
   }
 
   // src/overlay/render.js
-  var KIND_CLASSES = ["kind-verse", "kind-song", "kind-announcement", "kind-timer"];
+  var KIND_CLASSES = ["kind-verse", "kind-song", "kind-announcement", "kind-timer", "kind-lowerthird"];
   var THEME_CLASSES = ["theme-frosted", "theme-frosted-light", "theme-pure", "theme-sacred-light", "theme-custom"];
   var POS_CLASSES = ["pos-bottom", "pos-center", "pos-top"];
+  var ALIGN_CLASSES = ["lt-left", "lt-center", "lt-right"];
   var SIZE_CLASSES = ["fs-sm", "fs-md", "fs-lg", "fs-xl"];
   var ANIM_CLASSES = ["anim-rise", "anim-wipe", "anim-lines", "anim-cut"];
   var CARD_STATES = ["card-in", "card-out"];
@@ -310,6 +329,9 @@
   var LINES_BUDGET_S = 2.4;
   var TIMER_TICK_MS = 250;
   var TIMER_SCALE = 1.6;
+  var LT_NAME_SCALE = 0.9;
+  var LT_INFO_SCALE = 0.56;
+  var LT_LOGO_SCALE = 1.2;
   function createRenderer(doc = document, onError = () => {
   }) {
     const stage = doc.getElementById("stage");
@@ -318,6 +340,7 @@
     const titleEl = doc.getElementById("ov-title");
     const bodyEl = doc.getElementById("ov-body");
     const refEl = doc.getElementById("ov-ref");
+    const logoEl = doc.getElementById("ov-logo");
     let epoch = 0;
     let tickHandle = null;
     function setClass(group, value) {
@@ -371,7 +394,9 @@
       const colors = state.customColors || DEFAULTS.customColors;
       setClass(KIND_CLASSES, "kind-" + kind);
       setClass(THEME_CLASSES, "theme-" + theme);
-      setClass(POS_CLASSES, "pos-" + (state.position || "bottom"));
+      setClass(POS_CLASSES, "pos-" + (kind === "lowerthird" ? "bottom" : state.position || "bottom"));
+      ALIGN_CLASSES.forEach((c) => stage.classList.remove(c));
+      if (kind === "lowerthird") stage.classList.add("lt-" + state.lowerthird.align);
       setClass(SIZE_CLASSES, sizeClass);
       setClass(ANIM_CLASSES, "anim-" + state.animation);
       if (state.animation !== "lines") stage.classList.remove("lines-go");
@@ -399,8 +424,9 @@
       }
       if (theme === "custom") {
         const accent = colors.accent || "#a78bfa";
-        bodyEl.style.color = colors.text || "#ffffff";
-        titleEl.style.color = accent;
+        const swap = kind === "lowerthird";
+        bodyEl.style.color = swap ? accent : colors.text || "#ffffff";
+        titleEl.style.color = swap ? colors.text || "#ffffff" : accent;
         refEl.style.color = accent;
         card.style.setProperty("--accent", accent);
       } else {
@@ -411,7 +437,7 @@
       }
       card.style.fontFamily = "'" + font + "', 'Open Sans', Georgia, serif";
       bodyEl.style.fontStyle = state.italic ? "italic" : "normal";
-      const hideTitle = kind === "verse" || state.showTitle === false || kind !== "song" && !state.title;
+      const hideTitle = kind === "verse" || kind !== "lowerthird" && state.showTitle === false || kind !== "song" && !state.title;
       const hideRef = kind !== "verse" || state.showReference === false;
       titleEl.style.display = hideTitle ? "none" : "";
       refEl.style.display = hideRef ? "none" : "";
@@ -422,6 +448,13 @@
       card.style.paddingBottom = Math.round(24 * scale) + "px";
       card.style.paddingLeft = "52px";
       card.style.paddingRight = "52px";
+      if (kind === "lowerthird") {
+        card.style.minHeight = "";
+        card.style.paddingTop = Math.round(14 * scale) + "px";
+        card.style.paddingBottom = Math.round(14 * scale) + "px";
+        card.style.paddingLeft = "20px";
+        card.style.paddingRight = "28px";
+      }
       const labelRem = (LABEL_REM[sizeClass] || 1.1) * scale;
       titleEl.style.fontSize = labelRem + "rem";
       refEl.style.fontSize = labelRem + "rem";
@@ -430,11 +463,24 @@
       bodyEl.style.fontSize = computeBodyFontSize(text, sizeClass, scale) + "px";
     }
     function fillContent(state) {
+      const logo = state.kind === "lowerthird" ? state.lowerthird.logo : null;
+      if (logo) logoEl.src = logo;
+      else logoEl.removeAttribute("src");
+      stage.classList.toggle("has-logo", !!logo);
       const titled = state.kind !== "verse";
       titleEl.textContent = titled ? state.title || "" : "";
       refEl.textContent = state.kind === "verse" ? state.reference || "" : "";
       const body = state.body || "";
       bodyEl.setAttribute("aria-label", state.kind === "timer" ? state.title || "Timer" : body);
+      if (state.kind === "lowerthird") {
+        const base = computeBodyFontSize("", "fs-" + (state.fontSize || "md"), getScale(state));
+        titleEl.style.fontSize = Math.round(base * LT_NAME_SCALE) + "px";
+        bodyEl.style.fontSize = Math.round(base * LT_INFO_SCALE) + "px";
+        bodyEl.textContent = body;
+        bodyEl.style.removeProperty("--stagger");
+        logoEl.style.height = Math.round(base * (LT_NAME_SCALE + LT_INFO_SCALE) * LT_LOGO_SCALE) + "px";
+        return;
+      }
       if (state.kind === "timer") {
         paintClock(state.timer);
         bodyEl.style.removeProperty("--stagger");

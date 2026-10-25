@@ -1,7 +1,13 @@
 const err = (name) => Object.assign(new Error(name), { name });
 
+const bytesOf = (value) => {
+  if (value instanceof Uint8Array) return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+  return new TextEncoder().encode(String(value)).buffer;
+};
+
 export function createFakeDir(initial = {}) {
   const files = new Map(Object.entries(initial));
+  const readable = (name) => ({ text: async () => String(files.get(name)), arrayBuffer: async () => bytesOf(files.get(name)) });
   const dir = {
     name: 'songs',
     files,
@@ -25,12 +31,12 @@ export function createFakeDir(initial = {}) {
       return {
         kind: 'file',
         name,
-        async getFile() { return { text: async () => files.get(name) }; },
+        async getFile() { return readable(name); },
         async createWritable() {
           dir.guard();
           let buffer = '';
           return {
-            async write(text) { buffer += text; },
+            async write(data) { buffer = typeof data === 'string' ? buffer + data : data; },
             async close() { files.set(name, buffer); },
             async abort() {},
           };
@@ -44,9 +50,7 @@ export function createFakeDir(initial = {}) {
     },
     async *values() {
       dir.guard();
-      for (const name of [...files.keys()]) {
-        yield { kind: 'file', name, getFile: async () => ({ text: async () => files.get(name) }) };
-      }
+      for (const name of [...files.keys()]) yield { kind: 'file', name, getFile: async () => readable(name) };
       for (const name of dir.subdirs.keys()) yield { kind: 'directory', name };
     },
   };

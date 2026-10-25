@@ -19,6 +19,7 @@ import { createPlanStore } from '../plan/store.js';
 import { createLocalPlanStore } from '../plan/local-store.js';
 import { initPlanTab } from './plan/plan-tab.js';
 import { initExtrasTab } from './plan/extras-tab.js';
+import { createLogoStore } from './plan/logo-store.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
@@ -58,6 +59,7 @@ function wireDiagnosticsPanel() {
         songs: () => (tabs.songs ? tabs.songs.getContent() : EMPTY_SONG),
         announcement: () => (tabs.announcement ? tabs.announcement.getContent() : EMPTY_SONG),
         timer: () => (tabs.timer ? tabs.timer.getContent() : { ...EMPTY_SONG, timer: { remainingMs: 0 } }),
+        lowerthird: () => (tabs.lowerthird ? tabs.lowerthird.getContent() : { ...EMPTY_SONG, lowerthird: { align: 'left', logo: null } }),
       },
       onChange: () => {
         if (liveBar) liveBar.refresh();
@@ -80,9 +82,11 @@ function wireDiagnosticsPanel() {
     }
 
     liveBar = initLiveBar({ session, tabs, setStatus: status.setStatus });
-    const extras = initExtrasTab({ session, refresh: () => liveBar.refresh() });
+    const logoStore = createLogoStore({ onError: report('logos') });
+    const extras = initExtrasTab({ session, refresh: () => liveBar.refresh(), logoStore });
     tabs.announcement = extras.announcement;
     tabs.timer = extras.timer;
+    tabs.lowerthird = extras.lowerthird;
     const scripture = createScriptureApi({
       cache: idbCache(openKv('obs-stage-cache'), report('cache')),
       offline: createOfflineProvider(),
@@ -114,15 +118,20 @@ function wireDiagnosticsPanel() {
       library, setStatus: status.setStatus, report: report('songs'), onImported: () => tabs.songs.refreshList(),
     });
     tabs.plan = initPlanTab({
-      session, store: planStore, library, tabs, setStatus: status.setStatus, showView,
+      session, store: planStore, library, tabs, logoStore, setStatus: status.setStatus, showView,
       refresh: () => liveBar.refresh(), report: report('plans'),
     });
     libraryTools = initLibraryTools({
       library, kv: openKv('obs-stage-library'), setStatus: status.setStatus,
       report: report('library'), onChanged: () => { tabs.songs.refreshList(); tabs.plan.render(); },
       onFolderChange: async (handle) => {
-        if (handle) await planStore.attach(handle);
-        else planStore.detach();
+        if (handle) {
+          await planStore.attach(handle);
+          try { await logoStore.attach(handle); } catch (err) { report('logos')(err); }
+        } else {
+          planStore.detach();
+          logoStore.detach();
+        }
         tabs.plan.reload();
       },
     });

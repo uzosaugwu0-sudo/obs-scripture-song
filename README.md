@@ -76,6 +76,14 @@ On the Plan tab, **+ Announcement** and **+ Timer** open a small editor. Each ha
 - **Timer.** A countdown by **duration** (minutes and seconds) or **to a clock time** such as 10:30. A duration timer starts when you press **Show**; **Pause** / **Resume** and **Reset** appear in the live bar while it is on screen. A clock-time timer just follows the clock. At zero it stays on screen showing 0:00 until you press **Hide**; a clock time that has already passed today shows 0:00.
 - **Next item** loads announcements and timers like songs: into the live bar first, on screen only when you press **Show**. Loading the next item never changes a timer that is already on screen.
 
+### Lower thirds
+
+On the Plan tab, **+ Lower third** opens the same small editor as announcements and timers: a **name**, an **info** line (for example "Pastor John" over "Guest speaker"), a **Left / Centre / Right** placement, an optional **picture**, and an optional **Hide after (seconds)**. **Add to plan** puts it in the plan; **Show now** puts it on screen straight away without touching any plan. To change one later, open its row's **⋯** menu and choose **Edit**.
+
+- **It looks like your other cards.** A frosted bar with an accent edge, always at the bottom, in the theme, font and size you chose on the Style tab. It takes turns with the verse, song, announcement or timer card: showing a lower third replaces the card, and showing a card replaces the lower third.
+- **Hide after.** Leave it blank and the lower third stays until you press **Hide**. Fill in a number of seconds and it hides itself after that long. Pressing Hide or showing something else first cancels it, so it never hides the wrong thing.
+- **Pictures** (a church logo, a speaker's headshot) are kept as small PNG files in a `logos` folder inside your library folder. Choose a library folder in Songs, Library tools first. **Add picture...** shrinks the picture and saves it once; any lower third can use it. If a picture file is moved or deleted, the lower third still shows its name and info and the row says "picture missing".
+
 ### Scripture tab
 
 One box does everything. Type a reference and press **Enter**, type a book name to get suggestions, or type words from a verse to search for it. Reference entry is forgiving: `Psalm 23:1`, `Ps 23:1`, `1st John 4:8`, `II Corinthians 5:17` and `Philipp 4:13` all work. Ambiguous shorthand like `Jo` is rejected rather than guessed, so you never get the wrong verse by accident.
