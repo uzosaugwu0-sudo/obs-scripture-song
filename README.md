@@ -68,6 +68,14 @@ Build the order of service ahead of time, or as you go. A plan is a named list o
 - **Change it live.** New items go in right after the current one. Drag the grip on a row, or open its **⋯** menu for Move up, Move down and Remove. Removing the item that is on screen does not take it off the screen.
 - **Plans are files.** With a library folder chosen, each plan is saved as its own `.json` file in a `plans` folder inside it. Rename, duplicate and delete are in the **Plan** menu; pick another plan from the list. Plans point to songs, so editing a song updates every plan that uses it. A song that was removed from the library shows as "Song missing" and is skipped.
 
+### Announcements and timers
+
+On the Plan tab, **+ Announcement** and **+ Timer** open a small editor. Each has **Add to plan** and **Show now**; **Show now** puts it on screen straight away and does not touch any plan. To change one later, open its row's **⋯** menu and choose **Edit**.
+
+- **Announcement.** An optional title and some text, shown in the same card as songs and verses, in your current theme and animation.
+- **Timer.** A countdown by **duration** (minutes and seconds) or **to a clock time** such as 10:30. A duration timer starts when you press **Show**; **Pause** / **Resume** and **Reset** appear in the live bar while it is on screen. A clock-time timer just follows the clock. At zero it stays on screen showing 0:00 until you press **Hide**; a clock time that has already passed today shows 0:00.
+- **Next item** loads announcements and timers like songs: into the live bar first, on screen only when you press **Show**. Loading the next item never changes a timer that is already on screen.
+
 ### Scripture tab
 
 One box does everything. Type a reference and press **Enter**, type a book name to get suggestions, or type words from a verse to search for it. Reference entry is forgiving: `Psalm 23:1`, `Ps 23:1`, `1st John 4:8`, `II Corinthians 5:17` and `Philipp 4:13` all work. Ambiguous shorthand like `Jo` is rejected rather than guessed, so you never get the wrong verse by accident.
