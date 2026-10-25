@@ -1,6 +1,6 @@
-import { $ } from './util.js';
-import { BIBLE_BOOKS } from '../scripture/books.js';
-import { classifyInput, dropdownRows } from '../scripture/smart-input.js';
+import { $ } from '../shared/util.js';
+import { BIBLE_BOOKS } from '../../scripture/books.js';
+import { classifyInput, dropdownRows } from '../../scripture/smart-input.js';
 
 const QUICK_BOOKS = ['John', 'Romans', 'Psalms', 'Matthew', 'Genesis', 'Proverbs', 'Isaiah', 'Hebrews', 'Acts', 'Revelation'];
 const BLUR_CLOSE_MS = 120;

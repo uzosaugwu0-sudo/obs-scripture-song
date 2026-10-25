@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createDiagnostics } from '../../src/dock/diagnostics.js';
+import { createDiagnostics } from '../../../src/dock/shared/diagnostics.js';
 
 describe('diagnostics', () => {
   it('records the message of Errors and strings, newest last', () => {

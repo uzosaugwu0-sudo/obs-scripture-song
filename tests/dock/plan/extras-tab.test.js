@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { initExtrasTab } from '../../src/dock/extras-tab.js';
+import { initExtrasTab } from '../../../src/dock/plan/extras-tab.js';
 
 function setup() {
   const clock = { t: new Date(2026, 9, 25, 9, 0, 0).getTime() };

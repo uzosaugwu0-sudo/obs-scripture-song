@@ -1,5 +1,5 @@
-import { $ } from './util.js';
-import { announcementFromInputs, timerFromInputs } from '../plan/extras.js';
+import { $ } from '../shared/util.js';
+import { announcementFromInputs, timerFromInputs } from '../../plan/extras.js';
 
 /**
  * The inline editor for announcements and timers. It only reads and validates

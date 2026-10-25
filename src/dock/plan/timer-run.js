@@ -1,5 +1,5 @@
-import { clockEndAt, isValidTimerSpec } from '../plan/extras.js';
-import { remainingMs } from '../overlay/timer-clock.js';
+import { clockEndAt, isValidTimerSpec } from '../../plan/extras.js';
+import { remainingMs } from '../../overlay/timer-clock.js';
 
 const specOf = (item) => (item.mode === 'clock' ? { mode: 'clock', at: item.at } : { mode: 'duration', seconds: item.seconds });
 const fullMs = (spec) => spec.seconds * 1000;

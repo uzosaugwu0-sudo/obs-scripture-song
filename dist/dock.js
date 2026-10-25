@@ -1,16 +1,16 @@
 (() => {
-  // src/dock/util.js
+  // src/core/html.js
+  var escapeHtml = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // src/dock/shared/util.js
   var $ = (id) => document.getElementById(id);
-  function escapeHtml(s) {
-    return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  }
   function highlightMatch(text, q) {
     if (!q) return escapeHtml(text);
     const re = new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
     return escapeHtml(text).replace(re, "<mark>$1</mark>");
   }
 
-  // src/dock/status.js
+  // src/dock/shared/status.js
   function createStatus({ statusBar }) {
     function setStatus(msg, type) {
       statusBar.textContent = msg;
@@ -25,7 +25,7 @@
     return { setStatus };
   }
 
-  // src/dock/session.js
+  // src/dock/live/session.js
   var KIND_OF = { scripture: "verse", songs: "song", announcement: "announcement", timer: "timer" };
   var TABS = Object.keys(KIND_OF);
   function createSession({ transport, readSettings, providers, onChange = () => {
@@ -102,7 +102,7 @@
     };
   }
 
-  // src/dock/diagnostics.js
+  // src/dock/shared/diagnostics.js
   function createDiagnostics({ max = 100 } = {}) {
     let list = [];
     const listeners = /* @__PURE__ */ new Set();
@@ -361,7 +361,7 @@
     return { ...DEFAULTS, customColors: { ...DEFAULTS.customColors } };
   }
 
-  // src/dock/settings-store.js
+  // src/dock/style/settings-store.js
   var STYLE_KEYS = [
     "theme",
     "position",
@@ -413,7 +413,7 @@
     };
   }
 
-  // src/dock/live-bar.js
+  // src/dock/live/live-bar.js
   var PHASE_LABEL = { off: "OFF", live: "LIVE", hidden: "HIDDEN" };
   var EMPTY_PREVIEW = { has: false, text: "Nothing loaded", sub: "Look up a verse or pick a slide", canNav: false };
   var NEEDS = {
@@ -1064,7 +1064,7 @@
     return rows;
   }
 
-  // src/dock/smart-box.js
+  // src/dock/scripture/smart-box.js
   var QUICK_BOOKS = ["John", "Romans", "Psalms", "Matthew", "Genesis", "Proverbs", "Isaiah", "Hebrews", "Acts", "Revelation"];
   var BLUR_CLOSE_MS = 120;
   function initSmartBox({ onReference, onSearch, setStatus }) {
@@ -1180,7 +1180,7 @@
     };
   }
 
-  // src/dock/scripture-tab.js
+  // src/dock/scripture/scripture-tab.js
   function initScriptureTab({ session, scripture, store, setStatus, refresh, addToPlan, isPicking = () => false }) {
     const verseText = $("verse-text"), languageSel = $("language-sel"), translationSel = $("translation-sel"), autoShowCb = $("auto-show-cb"), randomScope = $("random-scope"), btnRandom = $("btn-random"), btnToPlan = $("btn-verse-to-plan"), results = $("search-results");
     let plainRef = "";
@@ -1583,13 +1583,12 @@
     return songs.map((song) => ({ song, ...songMatches(song, query) })).filter((result) => result.matched).sort((a, b) => b.score - a.score || a.song.title.localeCompare(b.song.title));
   }
   var escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  var escapeHtml2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   function markTokens(text, tokens) {
     const raw = String(text ?? "");
     const usable = (tokens || []).filter(Boolean).map(escapeRegExp);
-    if (!usable.length) return escapeHtml2(raw);
+    if (!usable.length) return escapeHtml(raw);
     const parts = raw.split(new RegExp("(" + usable.join("|") + ")", "i"));
-    return parts.map((part, i) => i % 2 === 1 ? "<mark>" + escapeHtml2(part) + "</mark>" : escapeHtml2(part)).join("");
+    return parts.map((part, i) => i % 2 === 1 ? "<mark>" + escapeHtml(part) + "</mark>" : escapeHtml(part)).join("");
   }
 
   // src/songs/duplicates.js
@@ -1611,7 +1610,7 @@
     return ids;
   }
 
-  // src/dock/songs-tab.js
+  // src/dock/songs/songs-tab.js
   function initSongsTab({ session, library, setStatus, refresh, addToPlan }) {
     const search = $("song-search"), listEl = $("song-list"), view = $("song-view"), nameEl = $("song-name"), btnAll = $("btn-all-songs"), btnToPlan = $("btn-song-to-plan"), btnEdit = $("btn-edit-song"), cardsEl = $("slide-cards"), editor = $("song-editor"), titleInput = $("song-title-input"), slideList = $("slide-list"), slideText = $("slide-textarea"), btnAdd = $("btn-add-slide"), btnUpdate = $("btn-update-slide"), btnDelSlide = $("btn-delete-slide"), btnSave = $("btn-save-song"), btnDelete = $("btn-delete-song"), btnDone = $("btn-done-edit"), btnNew = $("btn-new-song");
     let activeSongId = null;
@@ -2132,7 +2131,7 @@ ${DELIMITER}
     return [];
   }
 
-  // src/dock/import-panel.js
+  // src/dock/songs/import-panel.js
   var SONG_FILE = /[.](txt|json|csv|tsv)$/i;
   function readFileAsText(file) {
     return new Promise((resolve, reject) => {
@@ -2350,7 +2349,7 @@ ${DELIMITER}
   var saveHandle = (kv, handle) => kv.set(HANDLE_KEY, handle);
   var loadHandle = (kv) => kv.get(HANDLE_KEY);
 
-  // src/dock/library-tools.js
+  // src/dock/songs/library-tools.js
   var PICKER_ID = "obs-songs";
   function initLibraryTools({ library, kv, setStatus, report: report2, onChanged, onFolderChange = async () => {
   } }) {
@@ -2531,7 +2530,7 @@ ${DELIMITER}
     return CARD_DEFAULT[theme] ?? true;
   }
 
-  // src/dock/segmented.js
+  // src/dock/style/segmented.js
   function bindSegmented(container, { get, set }) {
     const buttons = [...container.querySelectorAll("button[data-value]")];
     function paint() {
@@ -2550,7 +2549,7 @@ ${DELIMITER}
     return { paint };
   }
 
-  // src/dock/bg-image.js
+  // src/dock/style/bg-image.js
   var MAX_WIDTH = 1920;
   var JPEG_QUALITY = 0.85;
   var UNREADABLE = "That image could not be read.";
@@ -2579,7 +2578,7 @@ ${DELIMITER}
     });
   }
 
-  // src/dock/style-tab.js
+  // src/dock/style/style-tab.js
   function initStyleTab({ session, store, setStatus, report: report2 }) {
     const fontSel = $("font-sel"), btnItalic = $("btn-italic"), opacitySlider = $("opacity-slider"), opacityValue = $("opacity-value"), scaleSlider = $("scale-slider"), scaleValue = $("scale-value"), showCardCb = $("show-card-cb"), showTitleCb = $("show-title-cb"), showRefCb = $("show-ref-cb"), customSection = $("custom-colors-section"), colorBg = $("color-bg"), colorText = $("color-text"), colorAccent = $("color-accent"), btnBgImage = $("btn-bg-image"), btnBgClear = $("btn-bg-clear"), bgName = $("bg-image-name"), bgInput = $("bg-image-input");
     FONTS.forEach((font) => {
@@ -2958,7 +2957,7 @@ ${DELIMITER}
     return where + " \xB7 " + (next ? "Next: " + itemTitle(next, library) : "End of plan");
   }
 
-  // src/dock/extras-editor.js
+  // src/dock/plan/extras-editor.js
   function initExtrasEditor({ onAdd, onSave, onShowNow }) {
     const root = $("extras-editor"), heading = $("ed-heading"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
     let type = "announcement";
@@ -3033,7 +3032,7 @@ ${DELIMITER}
     return { open, close, isOpen: () => !root.classList.contains("hidden") };
   }
 
-  // src/dock/plan-tab.js
+  // src/dock/plan/plan-tab.js
   var TYPE_ICON = { song: "\u266B", reading: "\u271D", announcement: "\u270E", timer: "\u23F1" };
   var BANNER_TEXT = {
     local: "Plans are saved in this browser only. Open Songs, Library tools and choose a library folder to keep them as files.",
@@ -3382,7 +3381,7 @@ ${DELIMITER}
     };
   }
 
-  // src/dock/timer-run.js
+  // src/dock/plan/timer-run.js
   var specOf = (item) => item.mode === "clock" ? { mode: "clock", at: item.at } : { mode: "duration", seconds: item.seconds };
   var fullMs = (spec) => spec.seconds * 1e3;
   function createTimerRun(now = Date.now) {
@@ -3435,7 +3434,7 @@ ${DELIMITER}
     };
   }
 
-  // src/dock/extras-tab.js
+  // src/dock/plan/extras-tab.js
   var DISPLAY_TICK_MS = 1e3;
   var NOTHING = { has: false, text: "Nothing loaded", canNav: false };
   function initExtrasTab({ session, refresh, now = Date.now, startTicker = true }) {

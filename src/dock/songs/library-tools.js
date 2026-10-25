@@ -1,6 +1,6 @@
-import { $ } from './util.js';
-import { createSongFolder, ensurePermission, saveHandle, loadHandle } from '../songs/folder.js';
-import { findDuplicateGroups, pickRemovals } from '../songs/duplicates.js';
+import { $ } from '../shared/util.js';
+import { createSongFolder, ensurePermission, saveHandle, loadHandle } from '../../songs/folder.js';
+import { findDuplicateGroups, pickRemovals } from '../../songs/duplicates.js';
 
 const PICKER_ID = 'obs-songs';
 

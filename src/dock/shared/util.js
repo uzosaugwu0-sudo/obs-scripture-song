@@ -1,4 +1,4 @@
-import { escapeHtml } from '../core/html.js';
+import { escapeHtml } from '../../core/html.js';
 
 export const $ = (id) => document.getElementById(id);
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSession } from '../../src/dock/session.js';
+import { createSession } from '../../../src/dock/live/session.js';
 
 function setup() {
   const sent = [];

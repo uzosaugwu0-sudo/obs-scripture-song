@@ -64,7 +64,7 @@ const DOCK_SHEETS = ['tokens', 'base', 'live-bar', 'tabs', 'fields', 'cards', 'b
 /** The dock sheets are small and ordered; the browser gets them as one file. */
 async function buildDockCss() {
   const parts = [];
-  for (const name of DOCK_SHEETS) parts.push(await readFile(`src/css/${name}.css`, 'utf8'));
+  for (const name of DOCK_SHEETS) parts.push(await readFile(`src/css/dock/${name}.css`, 'utf8'));
   await mkdir(`${DIST}/css`, { recursive: true });
   await writeFile(`${DIST}/css/dock.css`, parts.join(String.fromCharCode(10)));
 }
@@ -77,10 +77,8 @@ export async function build() {
   await bundle('src/overlay/main.js', `${DIST}/overlay.js`);
   await cp('src/html/overlay.html', `${DIST}/overlay.html`);
 
-  if (await exists('src/dock/main.js')) {
-    await bundle('src/dock/main.js', `${DIST}/dock.js`);
-    await cp('src/html/dock.html', `${DIST}/dock.html`);
-  }
+  await bundle('src/dock/main.js', `${DIST}/dock.js`);
+  await cp('src/html/dock.html', `${DIST}/dock.html`);
 
   await cp('src/css/overlay.css', `${DIST}/css/overlay.css`);
   await buildDockCss();

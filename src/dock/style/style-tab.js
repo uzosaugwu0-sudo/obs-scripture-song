@@ -1,6 +1,6 @@
-import { $ } from './util.js';
-import { FONTS } from '../core/fonts.js';
-import { defaultShowCard } from '../overlay/style-math.js';
+import { $ } from '../shared/util.js';
+import { FONTS } from '../../core/fonts.js';
+import { defaultShowCard } from '../../overlay/style-math.js';
 import { bindSegmented } from './segmented.js';
 import { readBackgroundImage } from './bg-image.js';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { build } from '../../build.mjs';
+import { build } from '../../scripts/build.mjs';
 
 beforeAll(async () => { await build(); }, 120000);
 

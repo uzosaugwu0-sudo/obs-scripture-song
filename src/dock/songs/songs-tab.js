@@ -1,6 +1,6 @@
-import { $ } from './util.js';
-import { searchSongs, tokenize, markTokens } from '../songs/search.js';
-import { findDuplicateGroups } from '../songs/duplicates.js';
+import { $ } from '../shared/util.js';
+import { searchSongs, tokenize, markTokens } from '../../songs/search.js';
+import { findDuplicateGroups } from '../../songs/duplicates.js';
 
 export function initSongsTab({ session, library, setStatus, refresh, addToPlan }) {
   const search = $('song-search'), listEl = $('song-list'), view = $('song-view'), nameEl = $('song-name'),
