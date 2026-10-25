@@ -23,6 +23,21 @@ export function createPlan(name = DEFAULT_PLAN_NAME, uid = defaultUid) {
 export const songItem = (songId, uid = defaultUid) => ({ id: 'i_' + uid(), type: 'song', songId });
 export const readingItem = (ref, translation, uid = defaultUid) => ({ id: 'i_' + uid(), type: 'reading', ref, translation });
 
+export const announcementItem = ({ title = '', body = '' }, uid = defaultUid) =>
+  ({ id: 'i_' + uid(), type: 'announcement', title: title.trim(), body: body.trim() });
+
+export function timerItem({ mode, seconds, at, title = '' }, uid = defaultUid) {
+  const base = { id: 'i_' + uid(), type: 'timer', mode };
+  const spec = mode === 'clock' ? { at } : { seconds };
+  return { ...base, ...spec, title: title.trim() };
+}
+
+/** Change fields of one item. Its id and type never change. */
+export function updateItem(plan, id, patch) {
+  if (!plan.items.some((i) => i.id === id)) return plan;
+  return { ...plan, items: plan.items.map((i) => (i.id === id ? { ...i, ...patch, id: i.id, type: i.type } : i)) };
+}
+
 export function addItem(plan, item, afterId = null) {
   const at = afterId === null ? -1 : plan.items.findIndex((i) => i.id === afterId);
   const index = at === -1 ? plan.items.length : at + 1;
