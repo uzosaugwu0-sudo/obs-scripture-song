@@ -7,13 +7,16 @@ const NEEDS = {
   songs: 'No slide text to display.',
   announcement: 'Write the announcement first.',
   timer: 'Set up the timer first.',
+  lowerthird: 'Write the lower third first.',
 };
 const LIVE_MSG = {
   scripture: 'Verse is live.',
   songs: 'Slide is live.',
   announcement: 'Announcement is live.',
   timer: 'Timer is running.',
+  lowerthird: 'Lower third is live.',
 };
+const LIVE_NAME = { announcement: 'Announcement', timer: 'Timer', lowerthird: 'Lower third' };
 
 /**
  * The pinned bar: status, a preview of what is loaded in the active tab, and
@@ -32,8 +35,8 @@ export function initLiveBar({ session, tabs, setStatus }) {
   function liveLabel() {
     if (session.phase !== 'live') return '';
     if (session.liveTab === 'scripture') return 'Verse';
-    if (session.liveTab === 'announcement' || session.liveTab === 'timer') {
-      const name = session.liveTab === 'timer' ? 'Timer' : 'Announcement';
+    if (LIVE_NAME[session.liveTab]) {
+      const name = LIVE_NAME[session.liveTab];
       const title = session.liveContent ? session.liveContent.title : '';
       return title ? name + ' · ' + title : name;
     }
@@ -71,11 +74,16 @@ export function initLiveBar({ session, tabs, setStatus }) {
     if (tab) tab.step(dir);
   }
 
-  btnShow.addEventListener('click', () => {
+  btnShow.addEventListener('click', async () => {
     const tab = activeTab();
+    const name = session.activeTab;
     if (!tab || !tab.preview().has) {
-      setStatus(NEEDS[session.activeTab] || 'Nothing to show.', 'error');
+      setStatus(NEEDS[name] || 'Nothing to show.', 'error');
       return;
+    }
+    if (tab.ready) {   // a lower third waits for its picture to be read
+      await tab.ready();
+      if (session.activeTab !== name) return;
     }
     if (tab.markShown) tab.markShown();
     session.show();
