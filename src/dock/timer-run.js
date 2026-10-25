@@ -13,12 +13,18 @@ export function createTimerRun(now = Date.now) {
   let loaded = null;    // { spec, title }
   let running = null;   // { spec, title, timer }, timer is { endAt } or { remainingMs }
 
-  const isPaused = () => !!running && typeof running.timer.endAt !== 'number';
+  const isPaused = () => !!running && running.spec.mode === 'duration' && typeof running.timer.endAt !== 'number';
+
+  /** A clock time that is already behind us is sent as zero left; an old end time would be dropped by the overlay as a stale leftover. */
+  function clockTimer(spec) {
+    const endAt = clockEndAt(spec.at, now());
+    return endAt <= now() ? { remainingMs: 0 } : { endAt };
+  }
   const canControl = () => !!running && running.spec.mode === 'duration';
 
   /** What the timer would show right now if it went on air: the full time, or the time left until the clock time. */
   function previewTimer(spec) {
-    return spec.mode === 'clock' ? { endAt: clockEndAt(spec.at, now()) } : { remainingMs: fullMs(spec) };
+    return spec.mode === 'clock' ? clockTimer(spec) : { remainingMs: fullMs(spec) };
   }
 
   return {
@@ -33,7 +39,7 @@ export function createTimerRun(now = Date.now) {
     start() {
       if (!loaded) return null;
       const { spec, title } = loaded;
-      const timer = spec.mode === 'clock' ? { endAt: clockEndAt(spec.at, now()) } : { endAt: now() + fullMs(spec) };
+      const timer = spec.mode === 'clock' ? clockTimer(spec) : { endAt: now() + fullMs(spec) };
       running = { spec, title, timer };
       return timer;
     },

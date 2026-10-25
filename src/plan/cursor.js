@@ -1,10 +1,12 @@
 import { isValidTimerSpec, describeTimerSpec } from './extras.js';
 
+const titleOk = (item) => item.title === undefined || typeof item.title === 'string';
+
 export function itemStatus(item, library) {
   if (item.type === 'song') return library.get(item.songId) ? 'ok' : 'missing';
   if (item.type === 'reading') return typeof item.ref === 'string' && item.ref.trim() ? 'ok' : 'unsupported';
-  if (item.type === 'announcement') return typeof item.body === 'string' && item.body.trim() ? 'ok' : 'unsupported';
-  if (item.type === 'timer') return isValidTimerSpec(item) ? 'ok' : 'unsupported';
+  if (item.type === 'announcement') return typeof item.body === 'string' && item.body.trim() && titleOk(item) ? 'ok' : 'unsupported';
+  if (item.type === 'timer') return isValidTimerSpec(item) && titleOk(item) ? 'ok' : 'unsupported';
   return 'unsupported';
 }
 

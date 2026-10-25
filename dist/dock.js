@@ -2915,11 +2915,12 @@ ${DELIMITER}
   }
 
   // src/plan/cursor.js
+  var titleOk = (item) => item.title === void 0 || typeof item.title === "string";
   function itemStatus(item, library) {
     if (item.type === "song") return library.get(item.songId) ? "ok" : "missing";
     if (item.type === "reading") return typeof item.ref === "string" && item.ref.trim() ? "ok" : "unsupported";
-    if (item.type === "announcement") return typeof item.body === "string" && item.body.trim() ? "ok" : "unsupported";
-    if (item.type === "timer") return isValidTimerSpec(item) ? "ok" : "unsupported";
+    if (item.type === "announcement") return typeof item.body === "string" && item.body.trim() && titleOk(item) ? "ok" : "unsupported";
+    if (item.type === "timer") return isValidTimerSpec(item) && titleOk(item) ? "ok" : "unsupported";
     return "unsupported";
   }
   function itemTitle(item, library) {
@@ -3088,7 +3089,9 @@ ${DELIMITER}
         setStatus("Added " + (draft.title || draft.type) + " to the plan.", "success");
       },
       onSave: (draft, id) => {
-        edit((p) => replaceItem(p, id, draftItem(draft)));
+        const saved = draftItem(draft);
+        edit((p) => replaceItem(p, id, saved));
+        if (id === currentId) tabs[draft.type].load(saved);
         setStatus("Saved.", "success");
       },
       onShowNow: showNow
@@ -3385,10 +3388,14 @@ ${DELIMITER}
   function createTimerRun(now = Date.now) {
     let loaded = null;
     let running = null;
-    const isPaused = () => !!running && typeof running.timer.endAt !== "number";
+    const isPaused = () => !!running && running.spec.mode === "duration" && typeof running.timer.endAt !== "number";
+    function clockTimer(spec) {
+      const endAt = clockEndAt(spec.at, now());
+      return endAt <= now() ? { remainingMs: 0 } : { endAt };
+    }
     const canControl = () => !!running && running.spec.mode === "duration";
     function previewTimer(spec) {
-      return spec.mode === "clock" ? { endAt: clockEndAt(spec.at, now()) } : { remainingMs: fullMs(spec) };
+      return spec.mode === "clock" ? clockTimer(spec) : { remainingMs: fullMs(spec) };
     }
     return {
       load(item) {
@@ -3402,7 +3409,7 @@ ${DELIMITER}
       start() {
         if (!loaded) return null;
         const { spec, title } = loaded;
-        const timer = spec.mode === "clock" ? { endAt: clockEndAt(spec.at, now()) } : { endAt: now() + fullMs(spec) };
+        const timer = spec.mode === "clock" ? clockTimer(spec) : { endAt: now() + fullMs(spec) };
         running = { spec, title, timer };
         return timer;
       },

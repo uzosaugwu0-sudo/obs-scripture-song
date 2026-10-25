@@ -91,6 +91,15 @@ describe('a clock timer', () => {
     expect(run.remainingNow()).toBe(0);
   });
 
+  it('a time that passed more than an hour ago is sent as zero, so the overlay does not drop it as stale', () => {
+    const { run, clock } = setup();
+    clock.t = new Date(2026, 9, 25, 23, 50, 0).getTime();
+    run.load(clockItem('00:05'));
+    expect(run.start()).toEqual({ remainingMs: 0 });
+    expect(run.previewTimer({ mode: 'clock', at: '00:05' })).toEqual({ remainingMs: 0 });
+    expect(run.remainingNow()).toBe(0);
+  });
+
   it('a time that already passed today stays in the past and shows zero', () => {
     const { run, clock } = setup();
     clock.t = new Date(2026, 9, 25, 11, 0, 0).getTime();

@@ -27,6 +27,17 @@ describe('announcement and timer items', () => {
     expect(itemTitle(annEmpty, library)).toBe('Unsupported item');
   });
 
+  it('a non-text title makes the item unsupported instead of crashing the list', () => {
+    const numberTitle = { id: 'n', type: 'timer', mode: 'duration', seconds: 60, title: 5 };
+    const boolTitle = { id: 'm', type: 'announcement', title: true, body: 'x' };
+    expect(itemStatus(numberTitle, library)).toBe('unsupported');
+    expect(itemStatus(boolTitle, library)).toBe('unsupported');
+    expect(itemTitle(numberTitle, library)).toBe('Unsupported item');
+    const plan = { v: 1, id: 'p', name: 'P', items: [numberTitle, boolTitle, dur] };
+    expect(nextLoadable(plan, null, library).id).toBe('d');
+    expect(() => planSummary(plan, null, library)).not.toThrow();
+  });
+
   it('Next item skips invalid ones and the summary names the next valid one', () => {
     const plan = { v: 1, id: 'p', name: 'P', items: [badSeconds, annEmpty, dur] };
     expect(nextLoadable(plan, null, library).id).toBe('d');

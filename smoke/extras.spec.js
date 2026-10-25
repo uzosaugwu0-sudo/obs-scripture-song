@@ -310,3 +310,22 @@ test.describe('timer controls while on air', () => {
     await expect(overlay.locator('#ov-title')).toHaveText('Back in');
   });
 });
+
+test.describe('review fixes', () => {
+  test('Save on the loaded item reloads it, so the next Show uses the edited text', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await openEditor(dock, 'announcement');
+    await fillAnnouncement(dock, { title: 'Welcome', text: 'Typo texxt' });
+    await dock.click('#ed-add');
+    await dock.click('#btn-next-item');
+    await expect(dock.locator('#preview-text')).toHaveText('Typo texxt');
+    await dock.locator('.plan-item .plan-more').click();
+    await dock.getByRole('button', { name: 'Edit' }).click();
+    await dock.fill('#ed-text', 'Fixed text');
+    await dock.click('#ed-add');
+    await expect(dock.locator('#preview-text')).toHaveText('Fixed text');
+    await expect(overlay.locator('#stage.hidden')).toHaveCount(1);
+    await dock.click('#btn-show');
+    await expect(bodyOf(overlay)).toHaveText('Fixed text');
+  });
+});

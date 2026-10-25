@@ -75,7 +75,10 @@ export function initPlanTab({ session, store, library, tabs, setStatus, showView
       setStatus('Added ' + (draft.title || draft.type) + ' to the plan.', 'success');
     },
     onSave: (draft, id) => {
-      edit((p) => replaceItem(p, id, draftItem(draft)));
+      const saved = draftItem(draft);
+      edit((p) => replaceItem(p, id, saved));
+      // The loaded item is what the next Show uses; keep it in step with the edit (what is on air is untouched).
+      if (id === currentId) tabs[draft.type].load(saved);
       setStatus('Saved.', 'success');
     },
     onShowNow: showNow,
