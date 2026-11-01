@@ -42,6 +42,14 @@ export function createLocalLowerThirdStore(storage, onError = () => {}) {
   return { load, save, loadDirty, saveDirty };
 }
 
+const words = (text) => String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** The id of the saved lower third that says the same thing (name and info), or null; saving that again replaces it. */
+export function sameWordsId(list, item) {
+  const match = list.find((i) => words(i.name) === words(item.name) && words(i.info) === words(item.info));
+  return match ? match.id : null;
+}
+
 async function readLibraryFile(dirHandle) {
   let text;
   try {

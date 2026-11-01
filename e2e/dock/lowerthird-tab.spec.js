@@ -140,6 +140,72 @@ test.describe('lower third tab: showing', () => {
   });
 });
 
+test.describe('saved lower thirds from the Plan tab', () => {
+  async function saveFromPlan(dock, name, info = '') {
+    await dock.click('#tab-plan');
+    await dock.click('#btn-plan-add-lowerthird');
+    await dock.fill('#ed-lt-name', name);
+    await dock.fill('#ed-lt-info', info);
+    await dock.click('#ed-save-saved');
+  }
+
+  test('the picker says so when nothing is saved yet', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await dock.click('#btn-plan-add-saved');
+    await expect(dock.locator('#saved-empty')).toBeVisible();
+    await expect(dock.locator('#saved-list li')).toHaveCount(0);
+  });
+
+  test('Save this lower third keeps it in the Lower third tab, once, without touching the plan', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await saveFromPlan(dock, 'Pastor John', 'Guest speaker');
+    await expect(dock.locator('#status-bar')).toContainText('Saved to the Lower third tab');
+    await dock.click('#ed-save-saved');   // the same words again replace it
+    await dock.click('#ed-cancel');
+    await expect(dock.locator('.plan-item')).toHaveCount(0);
+    await dock.click('#tab-lowerthird');
+    expect(await names(dock)).toEqual(['Pastor John']);
+  });
+
+  test('+ Saved lower third adds a copy to the plan, and the two are independent', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await dock.click('#tab-lowerthird');
+    await saveOne(dock, { name: 'Pastor John', info: 'Guest speaker', hide: '8' });
+    await dock.click('#tab-plan');
+    await dock.click('#btn-plan-add-saved');
+    await dock.locator('#saved-list .lt-pick', { hasText: 'Pastor John' }).click();
+    await expect(dock.locator('#saved-picker')).toBeHidden();
+    await expect(dock.locator('.plan-item .plan-title')).toHaveText('Pastor John');
+    await expect(dock.locator('.plan-item .plan-status')).toHaveText('hides after 8s');
+    await dock.click('#tab-lowerthird');
+    await rows(dock).first().getByRole('button', { name: 'Edit' }).click();
+    await dock.fill('#ed-lt-name', 'Pastor Johnny');
+    await dock.click('#ed-add');
+    await dock.click('#tab-plan');
+    await expect(dock.locator('.plan-item .plan-title')).toHaveText('Pastor John');
+  });
+
+  test('editing a lower third in the plan can save it, and the Lower third tab editor has no such button', async ({ context }) => {
+    const { dock } = await openPair(context);
+    await dock.click('#tab-plan');
+    await dock.click('#btn-plan-add-lowerthird');
+    await dock.fill('#ed-lt-name', 'Sister Mary');
+    await dock.click('#ed-add');
+    await dock.locator('.plan-item .plan-more').click();
+    await dock.getByRole('button', { name: 'Edit' }).click();
+    await expect(dock.locator('#ed-save-saved')).toBeVisible();
+    await dock.click('#ed-save-saved');
+    await dock.click('#ed-cancel');
+    await dock.click('#tab-lowerthird');
+    expect(await names(dock)).toEqual(['Sister Mary']);
+    await dock.click('#btn-lt-new');
+    await expect(dock.locator('#ed-save-saved')).toBeHidden();
+    await dock.click('#tab-plan');
+    await dock.click('#btn-plan-add-announcement');
+    await expect(dock.locator('#ed-save-saved')).toBeHidden();
+  });
+});
+
 test.describe('lower third tab: library folder and layout', () => {
   test('with a library folder the list is written to lowerthirds.json', async ({ context }) => {
     await context.addInitScript(() => { window.showDirectoryPicker = async () => navigator.storage.getDirectory(); });

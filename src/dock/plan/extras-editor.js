@@ -11,7 +11,7 @@ const NAMES = { announcement: 'announcement', timer: 'timer', lowerthird: 'lower
  * and validates the fields; what to do with a valid draft (add, save, show now)
  * is decided by the callbacks.
  */
-export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow }) {
+export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow, onSaveSaved }) {
   const root = $('extras-editor'), heading = $('ed-heading'), titleField = $('ed-title-field'), title = $('ed-title'), text = $('ed-text'),
         announcementFields = $('ed-announcement-fields'), timerFields = $('ed-timer-fields'), lowerFields = $('ed-lowerthird-fields'),
         modeButtons = [...document.querySelectorAll('#ed-mode button')],
@@ -22,10 +22,10 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
         ltFolderName = $('ed-lt-folder-name'), ltChooseFolder = $('ed-lt-choose-folder'),
         ltReconnect = $('ed-lt-reconnect'), ltForgetFolder = $('ed-lt-forget-folder'),
         alignButtons = [...document.querySelectorAll('#ed-lt-align button')],
-        hint = $('ed-hint'), btnAdd = $('ed-add'), btnShow = $('ed-show'), btnCancel = $('ed-cancel');
+        hint = $('ed-hint'), btnAdd = $('ed-add'), btnShow = $('ed-show'), btnSaved = $('ed-save-saved'), btnCancel = $('ed-cancel');
 
   const home = root.parentNode, homeNext = root.nextSibling;   // where the editor sits unless a tab asks to host it
-  let handlers = { onAdd, onSave, onShowNow };
+  let handlers = { onAdd, onSave, onShowNow, onSaveSaved };
   let type = 'announcement';
   let mode = 'duration';
   let align = 'left';
@@ -98,6 +98,7 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
     hint.textContent = result.ok ? '' : result.hint;
     btnAdd.disabled = !result.ok;
     btnShow.disabled = !result.ok;
+    btnSaved.disabled = !result.ok;
   }
 
   function close() {
@@ -109,7 +110,8 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
   function open({ type: nextType, item = null, host = home, addLabel = 'Add to plan', handlers: own = null }) {
     if (host === home) home.insertBefore(root, homeNext);
     else host.append(root);
-    handlers = own || { onAdd, onSave, onShowNow };
+    handlers = own || { onAdd, onSave, onShowNow, onSaveSaved };
+    btnSaved.classList.toggle('hidden', nextType !== 'lowerthird' || !handlers.onSaveSaved);
     type = nextType;
     editingId = item ? item.id : null;
     heading.textContent = (item ? 'Edit ' : 'New ') + NAMES[type];
@@ -184,6 +186,10 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
     if (!result.ok) return;
     handlers.onShowNow(result.draft);
     close();
+  });
+  btnSaved.addEventListener('click', () => {
+    const result = read();
+    if (result.ok) handlers.onSaveSaved(result.draft);
   });
   btnCancel.addEventListener('click', close);
   // Escape closes the editor and does not also reach the Hide shortcut.

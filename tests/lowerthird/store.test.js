@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createLowerThirdStore, createLocalLowerThirdStore, LIBRARY_FILE, ITEMS_KEY, DIRTY_KEY } from '../../src/lowerthird/store.js';
+import { createLowerThirdStore, createLocalLowerThirdStore, sameWordsId, LIBRARY_FILE, ITEMS_KEY, DIRTY_KEY } from '../../src/lowerthird/store.js';
 import { memoryStorage } from '../helpers/memory-storage.js';
 import { createFakeDir } from '../helpers/fake-dir.js';
 
@@ -42,6 +42,15 @@ describe('the saved list', () => {
     await store.save(lt('a', 'Pastor John'));
     const again = createLowerThirdStore({ local: createLocalLowerThirdStore(storage) });
     expect(again.list().map((i) => i.name)).toEqual(['Pastor John']);
+  });
+});
+
+describe('saving one that is already saved', () => {
+  it('finds the saved item with the same name and info, ignoring case and spacing', () => {
+    const list = [lt('a', 'Pastor John', { info: 'Guest speaker' }), lt('b', 'Mary')];
+    expect(sameWordsId(list, lt('x', ' pastor john ', { info: 'guest  speaker' }))).toBe('a');
+    expect(sameWordsId(list, lt('x', 'Mary'))).toBe('b');
+    expect(sameWordsId(list, lt('x', 'Pastor John'))).toBeNull();
   });
 });
 

@@ -6,3 +6,5 @@
 .lt-name, .lt-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lt-info { color: var(--dim); font-size: 11px; }
 #lt-editor-host { margin-top: var(--space-3); }
+.saved-pick { grid-template-columns: minmax(0, 1fr); }
+.lt-pick { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

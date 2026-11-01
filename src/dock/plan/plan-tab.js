@@ -3,6 +3,7 @@ import { createPlan, addItem, songItem, readingItem, announcementItem, timerItem
 import { itemStatus, itemTitle, indexOfItem, nextLoadable, prevLoadable, currentAfterRemove, planSummary } from '../../plan/cursor.js';
 import { describeTimerSpec, describeLowerThird } from '../../plan/extras.js';
 import { initExtrasEditor } from './extras-editor.js';
+import { sameWordsId } from '../../lowerthird/store.js';
 
 const TYPE_ICON = { song: '♫', reading: '✝', announcement: '✎', timer: '⏱', lowerthird: '▭' };
 const SHOW_NOW_MESSAGE = { announcement: 'Announcement is live.', timer: 'Timer is running.', lowerthird: 'Lower third is live.' };
@@ -22,7 +23,7 @@ function make(tag, className, text) {
  * The Plan tab: a named list of songs and readings. It only decides what to
  * load; what is on air is still decided by Show and Hide in the live bar.
  */
-export function initPlanTab({ session, store, library, tabs, logoStore, pictureFolder, setStatus, showView, refresh, report }) {
+export function initPlanTab({ session, store, lowerThirdStore, library, tabs, logoStore, pictureFolder, setStatus, showView, refresh, report }) {
   const select = $('plan-select'), listEl = $('plan-list'), banner = $('plan-banner'),
         unreadableEl = $('plan-unreadable'), btnMenu = $('btn-plan-menu'), menu = $('plan-menu'),
         picker = $('picker-banner'), pickerText = $('picker-text'), btnNext = $('btn-next-item');
@@ -75,6 +76,15 @@ export function initPlanTab({ session, store, library, tabs, logoStore, pictureF
     setStatus(SHOW_NOW_MESSAGE[draft.type], 'success');
   }
 
+  /** Keep a lower third in the Lower third tab's list; one that says the same thing is replaced, not duplicated. */
+  async function saveAsSaved(draft) {
+    const item = lowerThirdItem(draft);
+    const same = sameWordsId(lowerThirdStore.list(), item);
+    await lowerThirdStore.save(same ? { ...item, id: same } : item);
+    if (tabs.lowerthirdList) tabs.lowerthirdList.render();
+    setStatus(same ? 'Saved lower third updated.' : 'Saved to the Lower third tab.', 'success');
+  }
+
   const editor = initExtrasEditor({
     logoStore,
     pictureFolder,
@@ -90,6 +100,7 @@ export function initPlanTab({ session, store, library, tabs, logoStore, pictureF
       setStatus('Saved.', 'success');
     },
     onShowNow: showNow,
+    onSaveSaved: saveAsSaved,
   });
 
   function renderSelect() {
@@ -352,6 +363,35 @@ export function initPlanTab({ session, store, library, tabs, logoStore, pictureF
   $('btn-plan-add-announcement').addEventListener('click', () => editor.open({ type: 'announcement' }));
   $('btn-plan-add-timer').addEventListener('click', () => editor.open({ type: 'timer' }));
   $('btn-plan-add-lowerthird').addEventListener('click', () => editor.open({ type: 'lowerthird' }));
+
+  // Saved lower thirds: a copy goes into the plan, so editing one never changes the other.
+  const savedPicker = $('saved-picker'), savedList = $('saved-list'), savedEmpty = $('saved-empty'), btnSaved = $('btn-plan-add-saved');
+  const setSavedOpen = (open) => {
+    savedPicker.classList.toggle('hidden', !open);
+    btnSaved.setAttribute('aria-expanded', String(open));
+  };
+  function renderSaved() {
+    const saved = lowerThirdStore.list();
+    savedEmpty.classList.toggle('hidden', saved.length > 0);
+    savedList.replaceChildren(...saved.map((item) => {
+      const li = make('li', 'lt-item saved-pick');
+      const pick = make('button', 'btn btn-ghost lt-pick', item.name || item.info);
+      pick.type = 'button';
+      pick.addEventListener('click', () => {
+        const { name, info, align, logo, logoData, hideAfter } = item;
+        edit((pl) => addItem(pl, lowerThirdItem({ name, info, align, logo, logoData, hideAfter }), currentId));
+        setSavedOpen(false);
+        setStatus('Added ' + (item.name || item.info) + ' to the plan.', 'success');
+      });
+      li.append(pick);
+      return li;
+    }));
+  }
+  btnSaved.addEventListener('click', () => {
+    const open = savedPicker.classList.contains('hidden');
+    if (open) renderSaved();
+    setSavedOpen(open);
+  });
   btnNext.addEventListener('click', nextItem);
   $('btn-plan-add-song').addEventListener('click', () => startPicking('songs'));
   $('btn-plan-add-verse').addEventListener('click', () => startPicking('scripture'));
