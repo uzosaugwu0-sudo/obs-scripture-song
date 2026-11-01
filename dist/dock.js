@@ -3134,10 +3134,10 @@ ${DELIMITER}
   var NO_FOLDER_HINT = "No picture folder is chosen, so a picture you add is kept inside this lower third.";
   var EMBEDDED = "@embedded";
   var NAMES = { announcement: "announcement", timer: "timer", lowerthird: "lower third" };
-  function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow }) {
-    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), ltFolderName = $("ed-lt-folder-name"), ltChooseFolder = $("ed-lt-choose-folder"), ltReconnect = $("ed-lt-reconnect"), ltForgetFolder = $("ed-lt-forget-folder"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
+  function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow, onSaveSaved }) {
+    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), ltFolderName = $("ed-lt-folder-name"), ltChooseFolder = $("ed-lt-choose-folder"), ltReconnect = $("ed-lt-reconnect"), ltForgetFolder = $("ed-lt-forget-folder"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnSaved = $("ed-save-saved"), btnCancel = $("ed-cancel");
     const home = root.parentNode, homeNext = root.nextSibling;
-    let handlers = { onAdd, onSave, onShowNow };
+    let handlers = { onAdd, onSave, onShowNow, onSaveSaved };
     let type = "announcement";
     let mode = "duration";
     let align = "left";
@@ -3199,6 +3199,7 @@ ${DELIMITER}
       hint.textContent = result.ok ? "" : result.hint;
       btnAdd.disabled = !result.ok;
       btnShow.disabled = !result.ok;
+      btnSaved.disabled = !result.ok;
     }
     function close() {
       root.classList.add("hidden");
@@ -3207,7 +3208,8 @@ ${DELIMITER}
     function open({ type: nextType, item = null, host = home, addLabel = "Add to plan", handlers: own = null }) {
       if (host === home) home.insertBefore(root, homeNext);
       else host.append(root);
-      handlers = own || { onAdd, onSave, onShowNow };
+      handlers = own || { onAdd, onSave, onShowNow, onSaveSaved };
+      btnSaved.classList.toggle("hidden", nextType !== "lowerthird" || !handlers.onSaveSaved);
       type = nextType;
       editingId = item ? item.id : null;
       heading.textContent = (item ? "Edit " : "New ") + NAMES[type];
@@ -3294,6 +3296,10 @@ ${DELIMITER}
       handlers.onShowNow(result.draft);
       close();
     });
+    btnSaved.addEventListener("click", () => {
+      const result = read();
+      if (result.ok) handlers.onSaveSaved(result.draft);
+    });
     btnCancel.addEventListener("click", close);
     root.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
@@ -3302,6 +3308,121 @@ ${DELIMITER}
       }
     });
     return { open, close, isOpen: () => !root.classList.contains("hidden") };
+  }
+
+  // src/lowerthird/store.js
+  var LIBRARY_FILE = "lowerthirds.json";
+  var ITEMS_KEY = "obs-stage-lowerthirds";
+  var DIRTY_KEY2 = "obs-stage-lowerthirds-dirty";
+  var isRecord = (x) => x && typeof x === "object" && typeof x.id === "string";
+  function createLocalLowerThirdStore(storage, onError = () => {
+  }) {
+    function load() {
+      try {
+        const raw = storage?.getItem(ITEMS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.filter(isRecord) : [];
+      } catch (err) {
+        onError(err);
+        return [];
+      }
+    }
+    function save(items) {
+      try {
+        storage?.setItem(ITEMS_KEY, JSON.stringify(items));
+      } catch (err) {
+        onError(err);
+      }
+    }
+    function loadDirty() {
+      try {
+        const parsed = JSON.parse(storage?.getItem(DIRTY_KEY2) || "[]");
+        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+      } catch (err) {
+        onError(err);
+        return [];
+      }
+    }
+    function saveDirty(ids) {
+      try {
+        storage?.setItem(DIRTY_KEY2, JSON.stringify(ids));
+      } catch (err) {
+        onError(err);
+      }
+    }
+    return { load, save, loadDirty, saveDirty };
+  }
+  var words = (text) => String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
+  function sameWordsId(list, item) {
+    const match = list.find((i) => words(i.name) === words(item.name) && words(i.info) === words(item.info));
+    return match ? match.id : null;
+  }
+  async function readLibraryFile(dirHandle) {
+    let text;
+    try {
+      const handle = await dirHandle.getFileHandle(LIBRARY_FILE);
+      text = await (await handle.getFile()).text();
+    } catch (err) {
+      if (err.name === "NotFoundError") return null;
+      throw err;
+    }
+    const data = JSON.parse(text);
+    if (!Array.isArray(data?.items)) throw new Error(LIBRARY_FILE + " is not a lower third list");
+    return data.items.filter(isRecord);
+  }
+  function createLowerThirdStore({ local, onError = () => {
+  }, onUnreadable = onError, canWrite = () => true }) {
+    let items = local.load();
+    const dirty = new Set(local.loadDirty());
+    let folder = null;
+    let blocked = false;
+    async function persist(changedId = null) {
+      if (changedId) dirty.add(changedId);
+      if (folder && canWrite() && !blocked) {
+        try {
+          await writeFileAtomic(folder, LIBRARY_FILE, JSON.stringify({ v: 1, items }, null, 2));
+          dirty.clear();
+        } catch (err) {
+          onError(err);
+        }
+      }
+      local.save(items);
+      local.saveDirty([...dirty]);
+    }
+    const get = (id) => items.find((i) => i.id === id && isValidLowerThird(i)) || null;
+    async function save(item) {
+      items = items.some((i) => i.id === item.id) ? items.map((i) => i.id === item.id ? item : i) : [...items, item];
+      await persist(item.id);
+    }
+    async function remove(id) {
+      if (!items.some((i) => i.id === id)) return;
+      items = items.filter((i) => i.id !== id);
+      dirty.delete(id);
+      await persist();
+    }
+    async function attach(dirHandle) {
+      let fromFolder = null;
+      blocked = false;
+      try {
+        fromFolder = await readLibraryFile(dirHandle);
+      } catch (err) {
+        blocked = true;
+        onUnreadable(err);
+      }
+      folder = dirHandle;
+      if (fromFolder) {
+        const edited = new Map(items.filter((i) => dirty.has(i.id)).map((i) => [i.id, i]));
+        const inFolder = new Set(fromFolder.map((i) => i.id));
+        items = [...fromFolder.map((i) => edited.get(i.id) || i), ...items.filter((i) => !inFolder.has(i.id))];
+      }
+      await persist();
+    }
+    function detach() {
+      folder = null;
+      blocked = false;
+      local.save(items);
+    }
+    return { list: () => items.filter(isValidLowerThird), get, save, remove, attach, detach };
   }
 
   // src/dock/plan/plan-tab.js
@@ -3317,7 +3438,7 @@ ${DELIMITER}
     if (text !== void 0) el.textContent = text;
     return el;
   }
-  function initPlanTab({ session, store, library, tabs, logoStore, pictureFolder, setStatus, showView, refresh, report: report2 }) {
+  function initPlanTab({ session, store, lowerThirdStore, library, tabs, logoStore, pictureFolder, setStatus, showView, refresh, report: report2 }) {
     const select = $("plan-select"), listEl = $("plan-list"), banner = $("plan-banner"), unreadableEl = $("plan-unreadable"), btnMenu = $("btn-plan-menu"), menu = $("plan-menu"), picker = $("picker-banner"), pickerText = $("picker-text"), btnNext = $("btn-next-item");
     let plan = store.get(store.lastId()) || store.list()[0] || createPlan();
     let currentId = null;
@@ -3360,6 +3481,13 @@ ${DELIMITER}
       session.show();
       setStatus(SHOW_NOW_MESSAGE[draft.type], "success");
     }
+    async function saveAsSaved(draft) {
+      const item = lowerThirdItem(draft);
+      const same = sameWordsId(lowerThirdStore.list(), item);
+      await lowerThirdStore.save(same ? { ...item, id: same } : item);
+      if (tabs.lowerthirdList) tabs.lowerthirdList.render();
+      setStatus(same ? "Saved lower third updated." : "Saved to the Lower third tab.", "success");
+    }
     const editor = initExtrasEditor({
       logoStore,
       pictureFolder,
@@ -3373,7 +3501,8 @@ ${DELIMITER}
         if (id === currentId) tabs[draft.type].load(saved);
         setStatus("Saved.", "success");
       },
-      onShowNow: showNow
+      onShowNow: showNow,
+      onSaveSaved: saveAsSaved
     });
     function renderSelect() {
       const known = store.list();
@@ -3633,6 +3762,33 @@ ${DELIMITER}
     $("btn-plan-add-announcement").addEventListener("click", () => editor.open({ type: "announcement" }));
     $("btn-plan-add-timer").addEventListener("click", () => editor.open({ type: "timer" }));
     $("btn-plan-add-lowerthird").addEventListener("click", () => editor.open({ type: "lowerthird" }));
+    const savedPicker = $("saved-picker"), savedList = $("saved-list"), savedEmpty = $("saved-empty"), btnSaved = $("btn-plan-add-saved");
+    const setSavedOpen = (open) => {
+      savedPicker.classList.toggle("hidden", !open);
+      btnSaved.setAttribute("aria-expanded", String(open));
+    };
+    function renderSaved() {
+      const saved = lowerThirdStore.list();
+      savedEmpty.classList.toggle("hidden", saved.length > 0);
+      savedList.replaceChildren(...saved.map((item) => {
+        const li = make("li", "lt-item saved-pick");
+        const pick2 = make("button", "btn btn-ghost lt-pick", item.name || item.info);
+        pick2.type = "button";
+        pick2.addEventListener("click", () => {
+          const { name, info, align, logo, logoData, hideAfter } = item;
+          edit((pl) => addItem(pl, lowerThirdItem({ name, info, align, logo, logoData, hideAfter }), currentId));
+          setSavedOpen(false);
+          setStatus("Added " + (item.name || item.info) + " to the plan.", "success");
+        });
+        li.append(pick2);
+        return li;
+      }));
+    }
+    btnSaved.addEventListener("click", () => {
+      const open = savedPicker.classList.contains("hidden");
+      if (open) renderSaved();
+      setSavedOpen(open);
+    });
     btnNext.addEventListener("click", nextItem);
     $("btn-plan-add-song").addEventListener("click", () => startPicking("songs"));
     $("btn-plan-add-verse").addEventListener("click", () => startPicking("scripture"));
@@ -3935,116 +4091,6 @@ ${DELIMITER}
     };
   }
 
-  // src/lowerthird/store.js
-  var LIBRARY_FILE = "lowerthirds.json";
-  var ITEMS_KEY = "obs-stage-lowerthirds";
-  var DIRTY_KEY2 = "obs-stage-lowerthirds-dirty";
-  var isRecord = (x) => x && typeof x === "object" && typeof x.id === "string";
-  function createLocalLowerThirdStore(storage, onError = () => {
-  }) {
-    function load() {
-      try {
-        const raw = storage?.getItem(ITEMS_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed.filter(isRecord) : [];
-      } catch (err) {
-        onError(err);
-        return [];
-      }
-    }
-    function save(items) {
-      try {
-        storage?.setItem(ITEMS_KEY, JSON.stringify(items));
-      } catch (err) {
-        onError(err);
-      }
-    }
-    function loadDirty() {
-      try {
-        const parsed = JSON.parse(storage?.getItem(DIRTY_KEY2) || "[]");
-        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
-      } catch (err) {
-        onError(err);
-        return [];
-      }
-    }
-    function saveDirty(ids) {
-      try {
-        storage?.setItem(DIRTY_KEY2, JSON.stringify(ids));
-      } catch (err) {
-        onError(err);
-      }
-    }
-    return { load, save, loadDirty, saveDirty };
-  }
-  async function readLibraryFile(dirHandle) {
-    let text;
-    try {
-      const handle = await dirHandle.getFileHandle(LIBRARY_FILE);
-      text = await (await handle.getFile()).text();
-    } catch (err) {
-      if (err.name === "NotFoundError") return null;
-      throw err;
-    }
-    const data = JSON.parse(text);
-    if (!Array.isArray(data?.items)) throw new Error(LIBRARY_FILE + " is not a lower third list");
-    return data.items.filter(isRecord);
-  }
-  function createLowerThirdStore({ local, onError = () => {
-  }, onUnreadable = onError, canWrite = () => true }) {
-    let items = local.load();
-    const dirty = new Set(local.loadDirty());
-    let folder = null;
-    let blocked = false;
-    async function persist(changedId = null) {
-      if (changedId) dirty.add(changedId);
-      if (folder && canWrite() && !blocked) {
-        try {
-          await writeFileAtomic(folder, LIBRARY_FILE, JSON.stringify({ v: 1, items }, null, 2));
-          dirty.clear();
-        } catch (err) {
-          onError(err);
-        }
-      }
-      local.save(items);
-      local.saveDirty([...dirty]);
-    }
-    const get = (id) => items.find((i) => i.id === id && isValidLowerThird(i)) || null;
-    async function save(item) {
-      items = items.some((i) => i.id === item.id) ? items.map((i) => i.id === item.id ? item : i) : [...items, item];
-      await persist(item.id);
-    }
-    async function remove(id) {
-      if (!items.some((i) => i.id === id)) return;
-      items = items.filter((i) => i.id !== id);
-      dirty.delete(id);
-      await persist();
-    }
-    async function attach(dirHandle) {
-      let fromFolder = null;
-      blocked = false;
-      try {
-        fromFolder = await readLibraryFile(dirHandle);
-      } catch (err) {
-        blocked = true;
-        onUnreadable(err);
-      }
-      folder = dirHandle;
-      if (fromFolder) {
-        const edited = new Map(items.filter((i) => dirty.has(i.id)).map((i) => [i.id, i]));
-        const inFolder = new Set(fromFolder.map((i) => i.id));
-        items = [...fromFolder.map((i) => edited.get(i.id) || i), ...items.filter((i) => !inFolder.has(i.id))];
-      }
-      await persist();
-    }
-    function detach() {
-      folder = null;
-      blocked = false;
-      local.save(items);
-    }
-    return { list: () => items.filter(isValidLowerThird), get, save, remove, attach, detach };
-  }
-
   // src/dock/lowerthird/lowerthird-tab.js
   function make2(tag, className, text) {
     const el = document.createElement(tag);
@@ -4242,6 +4288,7 @@ ${DELIMITER}
       tabs.plan = initPlanTab({
         session,
         store: planStore,
+        lowerThirdStore,
         library,
         tabs,
         logoStore,

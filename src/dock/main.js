@@ -132,7 +132,7 @@ function wireDiagnosticsPanel() {
       library, setStatus: status.setStatus, report: report('songs'), onImported: () => tabs.songs.refreshList(),
     });
     tabs.plan = initPlanTab({
-      session, store: planStore, library, tabs, logoStore, pictureFolder, setStatus: status.setStatus, showView,
+      session, store: planStore, lowerThirdStore, library, tabs, logoStore, pictureFolder, setStatus: status.setStatus, showView,
       refresh: () => liveBar.refresh(), report: report('plans'),
     });
     tabs.lowerthirdList = initLowerThirdTab({

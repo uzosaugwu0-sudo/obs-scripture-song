@@ -69,6 +69,11 @@
       <button id="btn-plan-add-announcement" class="btn btn-ghost" type="button">+ Announcement</button>
       <button id="btn-plan-add-timer" class="btn btn-ghost" type="button">+ Timer</button>
       <button id="btn-plan-add-lowerthird" class="btn btn-ghost" type="button">+ Lower third</button>
+      <button id="btn-plan-add-saved" class="btn btn-ghost" type="button" aria-expanded="false">+ Saved lower third</button>
+    </div>
+    <div id="saved-picker" class="extras-editor hidden" role="group" aria-label="Saved lower thirds">
+      <p id="saved-empty" class="faint">Nothing saved yet. Save one from the editor, or on the Lower third tab.</p>
+      <ul id="saved-list" class="lt-list"></ul>
     </div>
     <div id="extras-editor" class="extras-editor hidden" role="group" aria-labelledby="ed-heading">
       <strong id="ed-heading">New announcement</strong>
@@ -121,6 +126,7 @@
       <p id="ed-hint" class="faint"></p>
       <div class="row">
         <button id="ed-add" class="btn btn-primary grow" type="button">Add to plan</button>
+        <button id="ed-save-saved" class="btn btn-ghost hidden" type="button">Save this lower third</button>
         <button id="ed-show" class="btn btn-ghost" type="button">Show now</button>
         <button id="ed-cancel" class="btn btn-ghost" type="button">Cancel</button>
       </div>
