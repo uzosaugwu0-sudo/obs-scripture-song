@@ -21,13 +21,15 @@ import { initPlanTab } from './plan/plan-tab.js';
 import { initExtrasTab } from './plan/extras-tab.js';
 import { createLogoStore } from './plan/logo-store.js';
 import { createPictureFolder } from './plan/picture-folder.js';
+import { createLowerThirdStore, createLocalLowerThirdStore } from '../lowerthird/store.js';
+import { initLowerThirdTab } from './lowerthird/lowerthird-tab.js';
 
 const diagnostics = createDiagnostics();
 const report = (context) => (err) => diagnostics.log(context, err);
 
 const EMPTY_SCRIPTURE = { body: '', reference: '' };
 const EMPTY_SONG = { title: '', body: '' };
-const VIEWS = ['plan', 'scripture', 'songs', 'style'];
+const VIEWS = ['plan', 'scripture', 'songs', 'lowerthird', 'style'];
 
 function wireDiagnosticsPanel() {
   const list = $('diag-list'), count = $('diag-count');
@@ -65,10 +67,11 @@ function wireDiagnosticsPanel() {
       onChange: () => {
         if (liveBar) liveBar.refresh();
         if (tabs.plan) tabs.plan.render();
+        if (tabs.lowerthirdList) tabs.lowerthirdList.render();
       },
     });
 
-    /** Which panel is showing. Only Scripture and Songs change session.activeTab. */
+    /** Which panel is showing. Scripture, Songs and Lower third change session.activeTab. */
     function showView(name) {
       VIEWS.forEach((view) => {
         const on = view === name;
@@ -77,7 +80,7 @@ function wireDiagnosticsPanel() {
         tab.classList.toggle('on', on);
         tab.setAttribute('aria-selected', String(on));
       });
-      if (name === 'scripture' || name === 'songs') session.setTab(name);
+      if (name === 'scripture' || name === 'songs' || name === 'lowerthird') session.setTab(name);
       if (tabs.plan) tabs.plan.onView(name);
       if (liveBar) liveBar.refresh();
     }
@@ -86,7 +89,7 @@ function wireDiagnosticsPanel() {
     const logoStore = createLogoStore({ onError: report('logos') });
     const pictureFolder = createPictureFolder({
       logoStore, kv: openKv('obs-stage-pictures'), report: report('pictures'),
-      onChange: () => { if (tabs.plan) tabs.plan.render(); },
+      onChange: () => { if (tabs.plan) tabs.plan.render(); if (tabs.lowerthirdList) tabs.lowerthirdList.render(); },
     });
     const extras = initExtrasTab({ session, refresh: () => liveBar.refresh(), logoStore });
     tabs.announcement = extras.announcement;
@@ -115,6 +118,12 @@ function wireDiagnosticsPanel() {
       onError: (err) => { report('plans')(err); library.markLost(); },
       canWrite: () => library.mode() === 'folder',
     });
+    const lowerThirdStore = createLowerThirdStore({
+      local: createLocalLowerThirdStore(window.localStorage, report('lowerthirds')),
+      onError: (err) => { report('lowerthirds')(err); library.markLost(); },
+      onUnreadable: report('lowerthirds'),
+      canWrite: () => library.mode() === 'folder',
+    });
     tabs.songs = initSongsTab({
       session, library, setStatus: status.setStatus, refresh: () => liveBar.refresh(),
       addToPlan: (songId, keepOpen) => tabs.plan.addSong(songId, keepOpen),
@@ -126,18 +135,24 @@ function wireDiagnosticsPanel() {
       session, store: planStore, library, tabs, logoStore, pictureFolder, setStatus: status.setStatus, showView,
       refresh: () => liveBar.refresh(), report: report('plans'),
     });
+    tabs.lowerthirdList = initLowerThirdTab({
+      session, store: lowerThirdStore, tabs, editor: tabs.plan.editor, logoStore, setStatus: status.setStatus,
+    });
     libraryTools = initLibraryTools({
       library, kv: openKv('obs-stage-library'), setStatus: status.setStatus,
       report: report('library'), onChanged: () => { tabs.songs.refreshList(); tabs.plan.render(); },
       onFolderChange: async (handle) => {
         if (handle) {
           await planStore.attach(handle);
+          await lowerThirdStore.attach(handle);
           try { await logoStore.attach(handle); } catch (err) { report('logos')(err); }
         } else {
           planStore.detach();
+          lowerThirdStore.detach();
           logoStore.detach();
         }
         tabs.plan.reload();
+        tabs.lowerthirdList.render();
       },
     });
     document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.tab)));
