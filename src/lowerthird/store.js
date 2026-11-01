@@ -24,13 +24,19 @@ export function createLocalLowerThirdStore(storage, onError = () => {}) {
     try { storage?.setItem(ITEMS_KEY, JSON.stringify(items)); } catch (err) { onError(err); }
   }
 
-  /** True while the browser copy holds edits the folder file has not seen; they win after a restart. */
+  /** Ids of items edited while the folder could not be written; they win over the folder copy after a restart. */
   function loadDirty() {
-    try { return storage?.getItem(DIRTY_KEY) === '1'; } catch (err) { onError(err); return false; }
+    try {
+      const parsed = JSON.parse(storage?.getItem(DIRTY_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [];
+    } catch (err) {
+      onError(err);
+      return [];
+    }
   }
 
-  function saveDirty(dirty) {
-    try { storage?.setItem(DIRTY_KEY, dirty ? '1' : '0'); } catch (err) { onError(err); }
+  function saveDirty(ids) {
+    try { storage?.setItem(DIRTY_KEY, JSON.stringify(ids)); } catch (err) { onError(err); }
   }
 
   return { load, save, loadDirty, saveDirty };
@@ -54,37 +60,40 @@ async function readLibraryFile(dirHandle) {
  * The saved lower thirds, independent of any plan. Items that are not valid lower thirds are kept
  * in storage untouched (list() hides them). Every change goes to lowerthirds.json in the library
  * folder when it is connected and writable, and always to the browser copy; a failed or skipped
- * folder write marks the copy dirty so it wins over the folder file when the folder is attached again.
+ * folder write marks that item dirty so it wins over the folder file when the folder is attached again.
+ * onError is for failed writes; onUnreadable is for a folder file that cannot be read (not a lost folder).
  */
-export function createLowerThirdStore({ local, onError = () => {}, canWrite = () => true }) {
+export function createLowerThirdStore({ local, onError = () => {}, onUnreadable = onError, canWrite = () => true }) {
   let items = local.load();
+  const dirty = new Set(local.loadDirty());
   let folder = null;
   let blocked = false;   // the folder file exists but could not be read: never overwrite it
 
-  async function persist() {
-    let dirty = true;
+  async function persist(changedId = null) {
+    if (changedId) dirty.add(changedId);
     if (folder && canWrite() && !blocked) {
       try {
         await writeFileAtomic(folder, LIBRARY_FILE, JSON.stringify({ v: 1, items }, null, 2));
-        dirty = false;
+        dirty.clear();
       } catch (err) {
         onError(err);
       }
     }
     local.save(items);
-    local.saveDirty(dirty);
+    local.saveDirty([...dirty]);
   }
 
   const get = (id) => items.find((i) => i.id === id && isValidLowerThird(i)) || null;
 
   async function save(item) {
     items = items.some((i) => i.id === item.id) ? items.map((i) => (i.id === item.id ? item : i)) : [...items, item];
-    await persist();
+    await persist(item.id);
   }
 
   async function remove(id) {
     if (!items.some((i) => i.id === id)) return;
     items = items.filter((i) => i.id !== id);
+    dirty.delete(id);
     await persist();
   }
 
@@ -96,11 +105,11 @@ export function createLowerThirdStore({ local, onError = () => {}, canWrite = ()
       fromFolder = await readLibraryFile(dirHandle);
     } catch (err) {
       blocked = true;
-      onError(err);
+      onUnreadable(err);
     }
     folder = dirHandle;
     if (fromFolder) {
-      const edited = local.loadDirty() ? new Map(items.map((i) => [i.id, i])) : new Map();
+      const edited = new Map(items.filter((i) => dirty.has(i.id)).map((i) => [i.id, i]));
       const inFolder = new Set(fromFolder.map((i) => i.id));
       items = [...fromFolder.map((i) => edited.get(i.id) || i), ...items.filter((i) => !inFolder.has(i.id))];
     }

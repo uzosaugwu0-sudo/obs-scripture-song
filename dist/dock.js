@@ -3136,7 +3136,7 @@ ${DELIMITER}
   var NAMES = { announcement: "announcement", timer: "timer", lowerthird: "lower third" };
   function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow }) {
     const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), ltFolderName = $("ed-lt-folder-name"), ltChooseFolder = $("ed-lt-choose-folder"), ltReconnect = $("ed-lt-reconnect"), ltForgetFolder = $("ed-lt-forget-folder"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnCancel = $("ed-cancel");
-    const home = root.parentNode;
+    const home = root.parentNode, homeNext = root.nextSibling;
     let handlers = { onAdd, onSave, onShowNow };
     let type = "announcement";
     let mode = "duration";
@@ -3205,7 +3205,8 @@ ${DELIMITER}
       editingId = null;
     }
     function open({ type: nextType, item = null, host = home, addLabel = "Add to plan", handlers: own = null }) {
-      host.append(root);
+      if (host === home) home.insertBefore(root, homeNext);
+      else host.append(root);
       handlers = own || { onAdd, onSave, onShowNow };
       type = nextType;
       editingId = item ? item.id : null;
@@ -3960,15 +3961,16 @@ ${DELIMITER}
     }
     function loadDirty() {
       try {
-        return storage?.getItem(DIRTY_KEY2) === "1";
+        const parsed = JSON.parse(storage?.getItem(DIRTY_KEY2) || "[]");
+        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
       } catch (err) {
         onError(err);
-        return false;
+        return [];
       }
     }
-    function saveDirty(dirty) {
+    function saveDirty(ids) {
       try {
-        storage?.setItem(DIRTY_KEY2, dirty ? "1" : "0");
+        storage?.setItem(DIRTY_KEY2, JSON.stringify(ids));
       } catch (err) {
         onError(err);
       }
@@ -3989,31 +3991,33 @@ ${DELIMITER}
     return data.items.filter(isRecord);
   }
   function createLowerThirdStore({ local, onError = () => {
-  }, canWrite = () => true }) {
+  }, onUnreadable = onError, canWrite = () => true }) {
     let items = local.load();
+    const dirty = new Set(local.loadDirty());
     let folder = null;
     let blocked = false;
-    async function persist() {
-      let dirty = true;
+    async function persist(changedId = null) {
+      if (changedId) dirty.add(changedId);
       if (folder && canWrite() && !blocked) {
         try {
           await writeFileAtomic(folder, LIBRARY_FILE, JSON.stringify({ v: 1, items }, null, 2));
-          dirty = false;
+          dirty.clear();
         } catch (err) {
           onError(err);
         }
       }
       local.save(items);
-      local.saveDirty(dirty);
+      local.saveDirty([...dirty]);
     }
     const get = (id) => items.find((i) => i.id === id && isValidLowerThird(i)) || null;
     async function save(item) {
       items = items.some((i) => i.id === item.id) ? items.map((i) => i.id === item.id ? item : i) : [...items, item];
-      await persist();
+      await persist(item.id);
     }
     async function remove(id) {
       if (!items.some((i) => i.id === id)) return;
       items = items.filter((i) => i.id !== id);
+      dirty.delete(id);
       await persist();
     }
     async function attach(dirHandle) {
@@ -4023,11 +4027,11 @@ ${DELIMITER}
         fromFolder = await readLibraryFile(dirHandle);
       } catch (err) {
         blocked = true;
-        onError(err);
+        onUnreadable(err);
       }
       folder = dirHandle;
       if (fromFolder) {
-        const edited = local.loadDirty() ? new Map(items.map((i) => [i.id, i])) : /* @__PURE__ */ new Map();
+        const edited = new Map(items.filter((i) => dirty.has(i.id)).map((i) => [i.id, i]));
         const inFolder = new Set(fromFolder.map((i) => i.id));
         items = [...fromFolder.map((i) => edited.get(i.id) || i), ...items.filter((i) => !inFolder.has(i.id))];
       }
@@ -4176,6 +4180,7 @@ ${DELIMITER}
         report: report("pictures"),
         onChange: () => {
           if (tabs.plan) tabs.plan.render();
+          if (tabs.lowerthirdList) tabs.lowerthirdList.render();
         }
       });
       const extras = initExtrasTab({ session, refresh: () => liveBar.refresh(), logoStore });
@@ -4218,6 +4223,7 @@ ${DELIMITER}
           report("lowerthirds")(err);
           library.markLost();
         },
+        onUnreadable: report("lowerthirds"),
         canWrite: () => library.mode() === "folder"
       });
       tabs.songs = initSongsTab({

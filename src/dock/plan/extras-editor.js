@@ -24,7 +24,7 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
         alignButtons = [...document.querySelectorAll('#ed-lt-align button')],
         hint = $('ed-hint'), btnAdd = $('ed-add'), btnShow = $('ed-show'), btnCancel = $('ed-cancel');
 
-  const home = root.parentNode;   // where the editor sits unless a tab asks to host it
+  const home = root.parentNode, homeNext = root.nextSibling;   // where the editor sits unless a tab asks to host it
   let handlers = { onAdd, onSave, onShowNow };
   let type = 'announcement';
   let mode = 'duration';
@@ -107,7 +107,8 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
 
   /** host: the element to show the editor in (default: its home in the Plan tab); handlers and addLabel override the plan callbacks for this opening. */
   function open({ type: nextType, item = null, host = home, addLabel = 'Add to plan', handlers: own = null }) {
-    host.append(root);
+    if (host === home) home.insertBefore(root, homeNext);
+    else host.append(root);
     handlers = own || { onAdd, onSave, onShowNow };
     type = nextType;
     editingId = item ? item.id : null;

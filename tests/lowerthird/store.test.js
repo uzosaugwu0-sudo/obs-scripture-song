@@ -55,18 +55,18 @@ describe('the local mirror', () => {
     const local = createLocalLowerThirdStore(broken, (e) => errors.push(e));
     expect(local.load()).toEqual([]);
     expect(() => local.save([lt('a', 'x')])).not.toThrow();
-    expect(local.loadDirty()).toBe(false);
-    expect(() => local.saveDirty(true)).not.toThrow();
+    expect(local.loadDirty()).toEqual([]);
+    expect(() => local.saveDirty(['a'])).not.toThrow();
   });
 
-  it('remembers whether there are edits the folder has not seen', () => {
+  it('remembers which items the folder has not seen', () => {
     const storage = memoryStorage();
     const local = createLocalLowerThirdStore(storage);
-    expect(local.loadDirty()).toBe(false);
-    local.saveDirty(true);
-    expect(createLocalLowerThirdStore(storage).loadDirty()).toBe(true);
-    local.saveDirty(false);
-    expect(storage.map.get(DIRTY_KEY)).toBe('0');
+    expect(local.loadDirty()).toEqual([]);
+    local.saveDirty(['a']);
+    expect(createLocalLowerThirdStore(storage).loadDirty()).toEqual(['a']);
+    local.saveDirty([]);
+    expect(storage.map.get(DIRTY_KEY)).toBe('[]');
   });
 });
 
@@ -120,7 +120,20 @@ describe('with a library folder', () => {
     await restarted.attach(dir);
     expect(restarted.list()[0].name).toBe('Edited offline');
     expect(fileOf(dir).items[0].name).toBe('Edited offline');
-    expect(createLocalLowerThirdStore(storage).loadDirty()).toBe(false);
+    expect(createLocalLowerThirdStore(storage).loadDirty()).toEqual([]);
+  });
+
+  it('only the items edited while the folder was unavailable beat the folder copy', async () => {
+    const { store } = setup();
+    const dir = createFakeDir();
+    await store.attach(dir);
+    await store.save(lt('a', 'A'));
+    await store.save(lt('b', 'B'));
+    store.detach();
+    await store.save(lt('a', 'A edited here'));
+    dir.files.set(LIBRARY_FILE, JSON.stringify({ v: 1, items: [lt('a', 'A'), lt('b', 'B edited elsewhere')] }));
+    await store.attach(dir);
+    expect(store.list().map((i) => i.name)).toEqual(['A edited here', 'B edited elsewhere']);
   });
 
   it('keeps the item and reports the error when the write fails, then writes it after reconnecting', async () => {
@@ -137,12 +150,14 @@ describe('with a library folder', () => {
   });
 
   it('never overwrites a folder file it cannot read', async () => {
-    const { store, errors } = setup();
+    const unreadable = [];
+    const { store, errors } = setup({ onUnreadable: (e) => unreadable.push(e) });
     const dir = createFakeDir({ [LIBRARY_FILE]: 'not json at all' });
     await store.attach(dir);
     await store.save(lt('a', 'Pastor John'));
     expect(dir.files.get(LIBRARY_FILE)).toBe('not json at all');
-    expect(errors.length).toBeGreaterThan(0);
+    expect(unreadable).toHaveLength(1);
+    expect(errors).toEqual([]);   // a bad file is reported, but is not a write failure
     expect(store.list()).toHaveLength(1);
   });
 

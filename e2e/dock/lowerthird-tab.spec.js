@@ -43,6 +43,8 @@ test.describe('lower third tab: the saved list', () => {
     await dock.click('#btn-plan-add-lowerthird');
     await expect(dock.locator('#panel-plan #extras-editor')).toBeVisible();
     await expect(dock.locator('#ed-add')).toHaveText('Add to plan');
+    const above = await dock.evaluate(() => document.getElementById('extras-editor').compareDocumentPosition(document.getElementById('btn-next-item')) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(above).toBeTruthy();   // still above the Next item button
     await dock.fill('#ed-lt-name', 'Pastor John');
     await dock.click('#ed-add');
     await expect(dock.locator('.plan-item .plan-title')).toHaveText('Pastor John');

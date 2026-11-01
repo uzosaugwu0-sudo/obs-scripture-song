@@ -89,7 +89,7 @@ function wireDiagnosticsPanel() {
     const logoStore = createLogoStore({ onError: report('logos') });
     const pictureFolder = createPictureFolder({
       logoStore, kv: openKv('obs-stage-pictures'), report: report('pictures'),
-      onChange: () => { if (tabs.plan) tabs.plan.render(); },
+      onChange: () => { if (tabs.plan) tabs.plan.render(); if (tabs.lowerthirdList) tabs.lowerthirdList.render(); },
     });
     const extras = initExtrasTab({ session, refresh: () => liveBar.refresh(), logoStore });
     tabs.announcement = extras.announcement;
@@ -121,6 +121,7 @@ function wireDiagnosticsPanel() {
     const lowerThirdStore = createLowerThirdStore({
       local: createLocalLowerThirdStore(window.localStorage, report('lowerthirds')),
       onError: (err) => { report('lowerthirds')(err); library.markLost(); },
+      onUnreadable: report('lowerthirds'),
       canWrite: () => library.mode() === 'folder',
     });
     tabs.songs = initSongsTab({
