@@ -38,6 +38,7 @@
     <button id="tab-plan" class="tab on" data-tab="plan" role="tab" aria-selected="true" type="button">Plan</button>
     <button id="tab-scripture" class="tab" data-tab="scripture" role="tab" aria-selected="false" type="button">Scripture</button>
     <button id="tab-songs" class="tab" data-tab="songs" role="tab" aria-selected="false" type="button">Songs</button>
+    <button id="tab-lowerthird" class="tab" data-tab="lowerthird" role="tab" aria-selected="false" type="button">Lower third</button>
     <button id="tab-style" class="tab" data-tab="style" role="tab" aria-selected="false" type="button">Style</button>
   </nav>
 
@@ -233,6 +234,16 @@
         <button id="btn-import-cancel" class="btn btn-ghost" type="button">Cancel</button>
       </div>
     </div>
+  </section>
+
+  <section id="panel-lowerthird" class="panel hidden" role="tabpanel" aria-labelledby="tab-lowerthird">
+    <div class="row">
+      <p class="faint grow">Saved lower thirds, ready to show any time.</p>
+      <button id="btn-lt-new" class="btn btn-ghost" type="button">+ New</button>
+    </div>
+    <p id="lt-empty" class="faint">No lower thirds saved yet. Tap New to make one.</p>
+    <ul id="lt-list" class="lt-list"></ul>
+    <div id="lt-editor-host"></div>
   </section>
 
   <section id="panel-style" class="panel hidden" role="tabpanel" aria-labelledby="tab-style">

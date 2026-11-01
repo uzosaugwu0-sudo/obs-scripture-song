@@ -1,0 +1,8 @@
+.lt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.lt-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px; align-items: center;
+  padding: 6px 8px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); min-width: 0; }
+.lt-item.cur { border-color: var(--show); background: var(--live-bg); }
+.lt-text { display: flex; flex-direction: column; min-width: 0; }
+.lt-name, .lt-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-info { color: var(--dim); font-size: 11px; }
+#lt-editor-host { margin-top: var(--space-3); }
