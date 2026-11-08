@@ -1,7 +1,7 @@
 import { $ } from '../shared/util.js';
 import { announcementFromInputs, timerFromInputs, lowerThirdFromInputs, MAX_ITEM_LOGO_DATA } from '../../plan/extras.js';
 import { encodeLogo, logoDataUrl } from './logo-store.js';
-import { FONTS } from '../../core/fonts.js';
+import { FONTS, isKnownFont } from '../../core/fonts.js';
 
 const NO_FOLDER_HINT = 'No picture folder is chosen, so a picture you add is kept inside this lower third.';
 const EMBEDDED = '@embedded';   // the drop-down value for a picture kept inside the lower third
@@ -136,7 +136,7 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
     ltName.value = item && type === 'lowerthird' ? (item.name || '') : '';
     ltInfo.value = item && type === 'lowerthird' ? (item.info || '') : '';
     ltHide.value = item && type === 'lowerthird' && item.hideAfter ? String(item.hideAfter) : '';
-    ltFont.value = item && type === 'lowerthird' && item.font ? item.font : '';
+    ltFont.value = item && type === 'lowerthird' && isKnownFont(item.font) ? item.font : '';
     setAlign(item && type === 'lowerthird' && item.align ? item.align : 'left');
     embedded = item && type === 'lowerthird' && item.logoData ? item.logoData : null;
     fillLogos(embedded ? EMBEDDED : (item && type === 'lowerthird' ? (item.logo || '') : ''));

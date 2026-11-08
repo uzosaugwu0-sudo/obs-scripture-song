@@ -26,6 +26,8 @@ describe('loading and content', () => {
     expect(tab.getContent()).toEqual({ title: 'Pastor John', body: 'Guest speaker', lowerthird: { align: 'center', logo: null, font: null } });
     tab.load(item({ font: 'Cinzel' }));
     expect(tab.getContent().lowerthird.font).toBe('Cinzel');
+    tab.load(item({ font: 'Comic Sans' }));
+    expect(tab.getContent().lowerthird.font).toBeNull();
     expect(tab.preview()).toMatchObject({ has: true, text: 'Pastor John', sub: 'Lower third · Guest speaker', canNav: false });
     expect(tab.load(item({ name: '', info: '' }))).toBe(false);
   });

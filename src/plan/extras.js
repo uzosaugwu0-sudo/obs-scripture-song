@@ -77,7 +77,6 @@ export function isValidLowerThird(item) {
   if ((item.name !== undefined && typeof item.name !== 'string') || (item.info !== undefined && typeof item.info !== 'string')) return false;
   if (!textOrEmpty(item.name) && !textOrEmpty(item.info)) return false;
   if (item.align !== undefined && !ALIGNS.includes(item.align)) return false;
-  if (item.font != null && !isKnownFont(item.font)) return false;
   if (item.logo != null && !isValidLogoName(item.logo)) return false;
   if (item.logoData != null && !usableLogoData(item.logoData)) return false;
   if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;

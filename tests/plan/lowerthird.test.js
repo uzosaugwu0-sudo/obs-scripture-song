@@ -56,10 +56,8 @@ describe('a picture kept inside the lower third', () => {
 });
 
 describe('a font of its own', () => {
-  it('is valid when it is in the font list, absent or null, and invalid otherwise', () => {
-    expect(isValidLowerThird({ ...ok, font: 'Cinzel' })).toBe(true);
-    expect(isValidLowerThird({ ...ok, font: null })).toBe(true);
-    for (const font of ['Comic Sans', '', 5, "x'; y"]) expect(isValidLowerThird({ ...ok, font }), String(font)).toBe(false);
+  it('never makes a lower third unusable: an unknown font just follows the Style tab', () => {
+    for (const font of ['Cinzel', null, undefined, 'Comic Sans', '', 5, "x'; y"]) expect(isValidLowerThird({ ...ok, font }), String(font)).toBe(true);
   });
   it('comes through the editor draft and the item, and blank or unknown means the Style tab font', () => {
     const base = { name: 'Pastor John', info: '', align: 'left', logo: '', hideAfter: '' };

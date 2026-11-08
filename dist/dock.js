@@ -2969,7 +2969,6 @@ ${DELIMITER}
     if (item.name !== void 0 && typeof item.name !== "string" || item.info !== void 0 && typeof item.info !== "string") return false;
     if (!textOrEmpty(item.name) && !textOrEmpty(item.info)) return false;
     if (item.align !== void 0 && !ALIGNS.includes(item.align)) return false;
-    if (item.font != null && !isKnownFont(item.font)) return false;
     if (item.logo != null && !isValidLogoName(item.logo)) return false;
     if (item.logoData != null && !usableLogoData(item.logoData)) return false;
     if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;
@@ -3235,7 +3234,7 @@ ${DELIMITER}
       ltName.value = item && type === "lowerthird" ? item.name || "" : "";
       ltInfo.value = item && type === "lowerthird" ? item.info || "" : "";
       ltHide.value = item && type === "lowerthird" && item.hideAfter ? String(item.hideAfter) : "";
-      ltFont.value = item && type === "lowerthird" && item.font ? item.font : "";
+      ltFont.value = item && type === "lowerthird" && isKnownFont(item.font) ? item.font : "";
       setAlign(item && type === "lowerthird" && item.align ? item.align : "left");
       embedded = item && type === "lowerthird" && item.logoData ? item.logoData : null;
       fillLogos(embedded ? EMBEDDED : item && type === "lowerthird" ? item.logo || "" : "");
@@ -3976,7 +3975,7 @@ ${DELIMITER}
     const lowerThirdTab = {
       load(item) {
         const wanted = item.logo || null;
-        lowerThird = { name: (item.name || "").trim(), info: (item.info || "").trim(), align: item.align || "left", logo: wanted, font: item.font || null, hideAfter: item.hideAfter || null };
+        lowerThird = { name: (item.name || "").trim(), info: (item.info || "").trim(), align: item.align || "left", logo: wanted, font: isKnownFont(item.font) ? item.font : null, hideAfter: item.hideAfter || null };
         const embedded = isLogoDataUrl(item.logoData) ? item.logoData : null;
         logoData = embedded;
         logoPending = !embedded && wanted && logoStore ? logoStore.read(wanted).catch(() => null).then((data) => {

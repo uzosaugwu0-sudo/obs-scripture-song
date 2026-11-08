@@ -2,6 +2,7 @@ import { createTimerRun } from './timer-run.js';
 import { formatClock, remainingMs } from '../../overlay/timer-clock.js';
 import { describeTimerSpec } from '../../plan/extras.js';
 import { isLogoDataUrl } from '../../core/state.js';
+import { isKnownFont } from '../../core/fonts.js';
 
 const DISPLAY_TICK_MS = 1000;
 const NOTHING = { has: false, text: 'Nothing loaded', canNav: false };
@@ -93,7 +94,7 @@ export function initExtrasTab({
   const lowerThirdTab = {
     load(item) {
       const wanted = item.logo || null;
-      lowerThird = { name: (item.name || '').trim(), info: (item.info || '').trim(), align: item.align || 'left', logo: wanted, font: item.font || null, hideAfter: item.hideAfter || null };
+      lowerThird = { name: (item.name || '').trim(), info: (item.info || '').trim(), align: item.align || 'left', logo: wanted, font: isKnownFont(item.font) ? item.font : null, hideAfter: item.hideAfter || null };
       const embedded = isLogoDataUrl(item.logoData) ? item.logoData : null;   // a picture kept inside the item needs no folder
       logoData = embedded;
       logoPending = !embedded && wanted && logoStore
