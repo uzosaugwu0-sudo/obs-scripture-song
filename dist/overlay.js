@@ -1,4 +1,21 @@
 (() => {
+  // src/core/fonts.js
+  var FONTS = [
+    { label: "Open Sans (Default)", value: "Open Sans" },
+    { label: "Atkinson Hyperlegible", value: "Atkinson Hyperlegible" },
+    { label: "Lato", value: "Lato" },
+    { label: "Montserrat", value: "Montserrat" },
+    { label: "Raleway", value: "Raleway" },
+    { label: "Lora", value: "Lora" },
+    { label: "EB Garamond", value: "EB Garamond" },
+    { label: "Cormorant Garamond", value: "Cormorant Garamond" },
+    { label: "Crimson Text", value: "Crimson Text" },
+    { label: "Playfair Display", value: "Playfair Display" },
+    { label: "Cinzel", value: "Cinzel" },
+    { label: "Georgia", value: "Georgia" }
+  ];
+  var isKnownFont = (name) => FONTS.some((f) => f.value === name);
+
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
@@ -18,7 +35,7 @@
     timer: null,
     // timer kind only: { endAt } while running, { remainingMs } while paused
     lowerthird: null,
-    // lowerthird kind only: { align, logo }
+    // lowerthird kind only: { align, logo, font }
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -64,7 +81,7 @@
   var textOf = (value) => typeof value === "string" ? value : "";
   function cleanLowerThird(value) {
     const v = value && typeof value === "object" ? value : {};
-    return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : "left", logo: isLogoDataUrl(v.logo) ? v.logo : null };
+    return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : "left", logo: isLogoDataUrl(v.logo) ? v.logo : null, font: isKnownFont(v.font) ? v.font : null };
   }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
@@ -435,7 +452,8 @@
         refEl.style.color = "";
         card.style.removeProperty("--accent");
       }
-      card.style.fontFamily = "'" + font + "', 'Open Sans', Georgia, serif";
+      const cardFont = kind === "lowerthird" && state.lowerthird.font || font;
+      card.style.fontFamily = "'" + cardFont + "', 'Open Sans', Georgia, serif";
       bodyEl.style.fontStyle = state.italic ? "italic" : "normal";
       const hideTitle = kind === "verse" || kind !== "lowerthird" && state.showTitle === false || kind !== "song" && !state.title;
       const hideRef = kind !== "verse" || state.showReference === false;

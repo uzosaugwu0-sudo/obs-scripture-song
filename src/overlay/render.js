@@ -146,7 +146,8 @@ export function createRenderer(doc = document, onError = () => {}) {
       card.style.removeProperty('--accent');
     }
 
-    card.style.fontFamily  = "'" + font + "', 'Open Sans', Georgia, serif";
+    const cardFont = (kind === 'lowerthird' && state.lowerthird.font) || font;   // a lower third may have a font of its own
+    card.style.fontFamily  = "'" + cardFont + "', 'Open Sans', Georgia, serif";
     bodyEl.style.fontStyle = state.italic ? 'italic' : 'normal';
 
     const hideTitle = kind === 'verse' || (kind !== 'lowerthird' && state.showTitle === false) || (kind !== 'song' && !state.title);

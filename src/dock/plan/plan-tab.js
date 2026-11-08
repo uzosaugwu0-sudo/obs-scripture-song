@@ -378,8 +378,8 @@ export function initPlanTab({ session, store, lowerThirdStore, library, tabs, lo
       const pick = make('button', 'btn btn-ghost lt-pick', item.name || item.info);
       pick.type = 'button';
       pick.addEventListener('click', () => {
-        const { name, info, align, logo, logoData, hideAfter } = item;
-        edit((pl) => addItem(pl, lowerThirdItem({ name, info, align, logo, logoData, hideAfter }), currentId));
+        const { name, info, align, logo, logoData, font, hideAfter } = item;
+        edit((pl) => addItem(pl, lowerThirdItem({ name, info, align, logo, logoData, font, hideAfter }), currentId));
         setSavedOpen(false);
         setStatus('Added ' + (item.name || item.info) + ' to the plan.', 'success');
       });

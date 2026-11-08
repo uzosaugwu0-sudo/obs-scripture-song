@@ -206,6 +206,54 @@ test.describe('saved lower thirds from the Plan tab', () => {
   });
 });
 
+test.describe('a font for the lower third', () => {
+  const cardFont = (overlay) => overlay.locator('#card').evaluate((el) => getComputedStyle(el).fontFamily);
+
+  test('chosen on the Lower third tab, it is used on air and kept when editing', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await dock.click('#tab-lowerthird');
+    await dock.click('#btn-lt-new');
+    await expect(dock.locator('#ed-lt-font option:checked')).toHaveText('Same as Style tab');
+    await dock.fill('#ed-lt-name', 'Pastor John');
+    await dock.selectOption('#ed-lt-font', 'Cinzel');
+    await dock.click('#ed-add');
+    await rows(dock).first().locator('button').first().click();
+    expect(await cardFont(overlay)).toContain('Cinzel');
+    await rows(dock).first().getByRole('button', { name: 'Edit' }).click();
+    await expect(dock.locator('#ed-lt-font')).toHaveValue('Cinzel');
+  });
+
+  test('chosen on the Plan tab, it is used on air, and other cards keep the Style tab font', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await dock.click('#tab-plan');
+    await dock.click('#btn-plan-add-lowerthird');
+    await dock.fill('#ed-lt-name', 'Pastor John');
+    await dock.selectOption('#ed-lt-font', 'Lora');
+    await dock.click('#ed-show');
+    expect(await cardFont(overlay)).toContain('Lora');
+    await dock.click('#btn-plan-add-announcement');
+    await dock.fill('#ed-text', 'Welcome');
+    await dock.click('#ed-show');
+    expect(await cardFont(overlay)).toContain('Open Sans');
+  });
+
+  test('a saved lower third brings its font into the plan', async ({ context }) => {
+    const { dock, overlay } = await openPair(context);
+    await dock.click('#tab-plan');
+    await dock.click('#btn-plan-add-lowerthird');
+    await dock.fill('#ed-lt-name', 'Sister Mary');
+    await dock.selectOption('#ed-lt-font', 'Playfair Display');
+    await dock.click('#ed-save-saved');
+    await dock.click('#ed-cancel');
+    await dock.click('#btn-plan-add-saved');
+    await dock.locator('#saved-list .lt-pick', { hasText: 'Sister Mary' }).click();
+    await dock.click('#btn-next-item');
+    await dock.click('#btn-show');
+    await expect(overlay.locator('#ov-title')).toHaveText('Sister Mary');
+    expect(await cardFont(overlay)).toContain('Playfair Display');
+  });
+});
+
 test.describe('lower third tab: library folder and layout', () => {
   test('with a library folder the list is written to lowerthirds.json', async ({ context }) => {
     await context.addInitScript(() => { window.showDirectoryPicker = async () => navigator.storage.getDirectory(); });

@@ -125,6 +125,23 @@
     };
   }
 
+  // src/core/fonts.js
+  var FONTS = [
+    { label: "Open Sans (Default)", value: "Open Sans" },
+    { label: "Atkinson Hyperlegible", value: "Atkinson Hyperlegible" },
+    { label: "Lato", value: "Lato" },
+    { label: "Montserrat", value: "Montserrat" },
+    { label: "Raleway", value: "Raleway" },
+    { label: "Lora", value: "Lora" },
+    { label: "EB Garamond", value: "EB Garamond" },
+    { label: "Cormorant Garamond", value: "Cormorant Garamond" },
+    { label: "Crimson Text", value: "Crimson Text" },
+    { label: "Playfair Display", value: "Playfair Display" },
+    { label: "Cinzel", value: "Cinzel" },
+    { label: "Georgia", value: "Georgia" }
+  ];
+  var isKnownFont = (name) => FONTS.some((f) => f.value === name);
+
   // src/core/state.js
   var STATE_VERSION = 1;
   var ACTIONS = Object.freeze(["show", "hide", "clear"]);
@@ -144,7 +161,7 @@
     timer: null,
     // timer kind only: { endAt } while running, { remainingMs } while paused
     lowerthird: null,
-    // lowerthird kind only: { align, logo }
+    // lowerthird kind only: { align, logo, font }
     theme: "frosted",
     position: "bottom",
     fontSize: "md",
@@ -190,7 +207,7 @@
   var textOf = (value) => typeof value === "string" ? value : "";
   function cleanLowerThird(value) {
     const v = value && typeof value === "object" ? value : {};
-    return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : "left", logo: isLogoDataUrl(v.logo) ? v.logo : null };
+    return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : "left", logo: isLogoDataUrl(v.logo) ? v.logo : null, font: isKnownFont(v.font) ? v.font : null };
   }
   function normalizeState(raw) {
     if (!raw || typeof raw !== "object") return null;
@@ -2535,22 +2552,6 @@ ${DELIMITER}
     return { restore, render };
   }
 
-  // src/core/fonts.js
-  var FONTS = [
-    { label: "Open Sans (Default)", value: "Open Sans" },
-    { label: "Atkinson Hyperlegible", value: "Atkinson Hyperlegible" },
-    { label: "Lato", value: "Lato" },
-    { label: "Montserrat", value: "Montserrat" },
-    { label: "Raleway", value: "Raleway" },
-    { label: "Lora", value: "Lora" },
-    { label: "EB Garamond", value: "EB Garamond" },
-    { label: "Cormorant Garamond", value: "Cormorant Garamond" },
-    { label: "Crimson Text", value: "Crimson Text" },
-    { label: "Playfair Display", value: "Playfair Display" },
-    { label: "Cinzel", value: "Cinzel" },
-    { label: "Georgia", value: "Georgia" }
-  ];
-
   // src/overlay/style-math.js
   var CARD_DEFAULT = { frosted: true, "frosted-light": true, pure: false, "sacred-light": true, custom: true };
   function defaultShowCard(theme) {
@@ -2733,7 +2734,7 @@ ${DELIMITER}
     if (!plan.items.some((i) => i.id === id)) return plan;
     return { ...plan, items: plan.items.map((i) => i.id === id ? { ...item, id } : i) };
   }
-  var lowerThirdItem = ({ name = "", info = "", align = "left", logo = null, logoData = null, hideAfter = null }, uid2 = uid) => ({ id: "i_" + uid2(), type: "lowerthird", name: name.trim(), info: info.trim(), align, logo, logoData, hideAfter });
+  var lowerThirdItem = ({ name = "", info = "", align = "left", logo = null, logoData = null, font = null, hideAfter = null }, uid2 = uid) => ({ id: "i_" + uid2(), type: "lowerthird", name: name.trim(), info: info.trim(), align, logo, logoData, font, hideAfter });
 
   // src/plan/folder.js
   var PLANS_DIR = "plans";
@@ -2974,7 +2975,7 @@ ${DELIMITER}
     return true;
   }
   var describeLowerThird = (item) => item.hideAfter ? "hides after " + item.hideAfter + "s" : "stays";
-  function lowerThirdFromInputs({ name = "", info = "", align = "left", logo = "", logoData = "", hideAfter = "" }) {
+  function lowerThirdFromInputs({ name = "", info = "", align = "left", logo = "", logoData = "", font = "", hideAfter = "" }) {
     const n = name.trim();
     const i = info.trim();
     if (!n && !i) return { ok: false, hint: "Enter a name or some info." };
@@ -2987,7 +2988,7 @@ ${DELIMITER}
     if (logoData && !usableLogoData(logoData)) return { ok: false, hint: "That picture could not be used. Choose it again." };
     return {
       ok: true,
-      draft: { type: "lowerthird", name: n, info: i, align: ALIGNS.includes(align) ? align : "left", logo: logoData ? null : logo || null, logoData: logoData || null, hideAfter: seconds }
+      draft: { type: "lowerthird", name: n, info: i, align: ALIGNS.includes(align) ? align : "left", logo: logoData ? null : logo || null, logoData: logoData || null, font: isKnownFont(font) ? font : null, hideAfter: seconds }
     };
   }
 
@@ -3135,9 +3136,15 @@ ${DELIMITER}
   var EMBEDDED = "@embedded";
   var NAMES = { announcement: "announcement", timer: "timer", lowerthird: "lower third" };
   function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onShowNow, onSaveSaved }) {
-    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), ltFolderName = $("ed-lt-folder-name"), ltChooseFolder = $("ed-lt-choose-folder"), ltReconnect = $("ed-lt-reconnect"), ltForgetFolder = $("ed-lt-forget-folder"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnSaved = $("ed-save-saved"), btnCancel = $("ed-cancel");
+    const root = $("extras-editor"), heading = $("ed-heading"), titleField = $("ed-title-field"), title = $("ed-title"), text = $("ed-text"), announcementFields = $("ed-announcement-fields"), timerFields = $("ed-timer-fields"), lowerFields = $("ed-lowerthird-fields"), modeButtons = [...document.querySelectorAll("#ed-mode button")], durationFields = $("ed-duration-fields"), clockFields = $("ed-clock-fields"), minutes = $("ed-minutes"), seconds = $("ed-seconds"), clock = $("ed-clock"), ltName = $("ed-lt-name"), ltInfo = $("ed-lt-info"), ltHide = $("ed-lt-hide"), ltFont = $("ed-lt-font"), ltLogo = $("ed-lt-logo"), ltAddLogo = $("ed-lt-add-logo"), ltFile = $("ed-lt-file"), ltLogoHint = $("ed-lt-logo-hint"), ltFolderName = $("ed-lt-folder-name"), ltChooseFolder = $("ed-lt-choose-folder"), ltReconnect = $("ed-lt-reconnect"), ltForgetFolder = $("ed-lt-forget-folder"), alignButtons = [...document.querySelectorAll("#ed-lt-align button")], hint = $("ed-hint"), btnAdd = $("ed-add"), btnShow = $("ed-show"), btnSaved = $("ed-save-saved"), btnCancel = $("ed-cancel");
     const home = root.parentNode, homeNext = root.nextSibling;
     let handlers = { onAdd, onSave, onShowNow, onSaveSaved };
+    ltFont.replaceChildren(...[{ label: "Same as Style tab", value: "" }, ...FONTS].map(({ value, label }) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }));
     let type = "announcement";
     let mode = "duration";
     let align = "left";
@@ -3146,7 +3153,7 @@ ${DELIMITER}
     function read() {
       if (type === "announcement") return announcementFromInputs({ title: title.value, body: text.value });
       if (type === "timer") return timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
-      return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value === EMBEDDED ? "" : ltLogo.value, logoData: ltLogo.value === EMBEDDED ? embedded : "", hideAfter: ltHide.value });
+      return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value === EMBEDDED ? "" : ltLogo.value, logoData: ltLogo.value === EMBEDDED ? embedded : "", font: ltFont.value, hideAfter: ltHide.value });
     }
     function setPressed(buttons, value) {
       buttons.forEach((button) => {
@@ -3227,6 +3234,7 @@ ${DELIMITER}
       ltName.value = item && type === "lowerthird" ? item.name || "" : "";
       ltInfo.value = item && type === "lowerthird" ? item.info || "" : "";
       ltHide.value = item && type === "lowerthird" && item.hideAfter ? String(item.hideAfter) : "";
+      ltFont.value = item && type === "lowerthird" && isKnownFont(item.font) ? item.font : "";
       setAlign(item && type === "lowerthird" && item.align ? item.align : "left");
       embedded = item && type === "lowerthird" && item.logoData ? item.logoData : null;
       fillLogos(embedded ? EMBEDDED : item && type === "lowerthird" ? item.logo || "" : "");
@@ -3241,6 +3249,7 @@ ${DELIMITER}
     }
     [title, text, minutes, seconds, clock, ltName, ltInfo, ltHide].forEach((field) => field.addEventListener("input", update));
     ltLogo.addEventListener("change", update);
+    ltFont.addEventListener("change", update);
     modeButtons.forEach((button) => button.addEventListener("click", () => {
       setMode(button.dataset.value);
       update();
@@ -3775,8 +3784,8 @@ ${DELIMITER}
         const pick2 = make("button", "btn btn-ghost lt-pick", item.name || item.info);
         pick2.type = "button";
         pick2.addEventListener("click", () => {
-          const { name, info, align, logo, logoData, hideAfter } = item;
-          edit((pl) => addItem(pl, lowerThirdItem({ name, info, align, logo, logoData, hideAfter }), currentId));
+          const { name, info, align, logo, logoData, font, hideAfter } = item;
+          edit((pl) => addItem(pl, lowerThirdItem({ name, info, align, logo, logoData, font, hideAfter }), currentId));
           setSavedOpen(false);
           setStatus("Added " + (item.name || item.info) + " to the plan.", "success");
         });
@@ -3958,7 +3967,7 @@ ${DELIMITER}
         if (isLiveTimer() && run.reset()) pushLive();
       }
     };
-    let lowerThird = { name: "", info: "", align: "left", logo: null, hideAfter: null };
+    let lowerThird = { name: "", info: "", align: "left", logo: null, font: null, hideAfter: null };
     let logoData = null;
     let logoPending = Promise.resolve();
     let hideToken = 0;
@@ -3966,7 +3975,7 @@ ${DELIMITER}
     const lowerThirdTab = {
       load(item) {
         const wanted = item.logo || null;
-        lowerThird = { name: (item.name || "").trim(), info: (item.info || "").trim(), align: item.align || "left", logo: wanted, hideAfter: item.hideAfter || null };
+        lowerThird = { name: (item.name || "").trim(), info: (item.info || "").trim(), align: item.align || "left", logo: wanted, font: isKnownFont(item.font) ? item.font : null, hideAfter: item.hideAfter || null };
         const embedded = isLogoDataUrl(item.logoData) ? item.logoData : null;
         logoData = embedded;
         logoPending = !embedded && wanted && logoStore ? logoStore.read(wanted).catch(() => null).then((data) => {
@@ -3984,7 +3993,7 @@ ${DELIMITER}
           await waited;
         } while (waited !== logoPending);
       },
-      getContent: () => ({ title: lowerThird.name, body: lowerThird.info, lowerthird: { align: lowerThird.align, logo: logoData } }),
+      getContent: () => ({ title: lowerThird.name, body: lowerThird.info, lowerthird: { align: lowerThird.align, logo: logoData, font: lowerThird.font } }),
       preview() {
         const text = lowerThird.name || lowerThird.info;
         if (!text) return { ...NOTHING, sub: "Lower third" };

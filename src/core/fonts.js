@@ -13,3 +13,6 @@ export const FONTS = [
   { label: 'Cinzel',                value: 'Cinzel'},
   { label: 'Georgia',               value: 'Georgia'},
 ];
+
+/** True for a font name from the list, so a hand-edited file or a hostile message can never inject other CSS. */
+export const isKnownFont = (name) => FONTS.some((f) => f.value === name);

@@ -31,7 +31,7 @@ describe('lowerthird kind', () => {
     expect(normalizeState(show({ lowerthird: { align: 'center' } })).lowerthird.align).toBe('center');
     expect(normalizeState(show({ lowerthird: { align: 'right' } })).lowerthird.align).toBe('right');
     expect(normalizeState(show({ lowerthird: { align: 'diagonal' } })).lowerthird.align).toBe('left');
-    expect(normalizeState(show({ lowerthird: 'junk' })).lowerthird).toEqual({ align: 'left', logo: null });
+    expect(normalizeState(show({ lowerthird: 'junk' })).lowerthird).toEqual({ align: 'left', logo: null, font: null });
   });
 
   it('keeps an image data URL and drops anything else, leaving the text', () => {
@@ -40,6 +40,13 @@ describe('lowerthird kind', () => {
       const state = normalizeState(show({ lowerthird: { logo: bad } }));
       expect(state.lowerthird.logo).toBeNull();
       expect(state.title).toBe('Pastor John');
+    }
+  });
+
+  it('keeps a font from the font list and drops anything else', () => {
+    expect(normalizeState(show({ lowerthird: { font: 'Cinzel' } })).lowerthird.font).toBe('Cinzel');
+    for (const bad of ['Comic Sans', "Cinzel'; color: red", '', 5, null, {}]) {
+      expect(normalizeState(show({ lowerthird: { font: bad } })).lowerthird.font).toBeNull();
     }
   });
 

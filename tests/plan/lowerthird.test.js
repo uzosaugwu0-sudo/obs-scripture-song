@@ -55,6 +55,21 @@ describe('a picture kept inside the lower third', () => {
   });
 });
 
+describe('a font of its own', () => {
+  it('never makes a lower third unusable: an unknown font just follows the Style tab', () => {
+    for (const font of ['Cinzel', null, undefined, 'Comic Sans', '', 5, "x'; y"]) expect(isValidLowerThird({ ...ok, font }), String(font)).toBe(true);
+  });
+  it('comes through the editor draft and the item, and blank or unknown means the Style tab font', () => {
+    const base = { name: 'Pastor John', info: '', align: 'left', logo: '', hideAfter: '' };
+    const draft = lowerThirdFromInputs({ ...base, font: 'Lora' }).draft;
+    expect(draft.font).toBe('Lora');
+    expect(lowerThirdItem(draft, () => 'f1').font).toBe('Lora');
+    expect(lowerThirdFromInputs({ ...base, font: '' }).draft.font).toBeNull();
+    expect(lowerThirdFromInputs({ ...base, font: 'Comic Sans' }).draft.font).toBeNull();
+    expect(lowerThirdFromInputs(base).draft.font).toBeNull();
+  });
+});
+
 describe('describeLowerThird', () => {
   it('says how it goes away', () => {
     expect(describeLowerThird(ok)).toBe('stays');
@@ -65,7 +80,7 @@ describe('describeLowerThird', () => {
 describe('lowerThirdFromInputs', () => {
   const base = { name: ' Pastor John ', info: ' Guest speaker ', align: 'center', logo: '', hideAfter: '' };
   it('builds a draft, trimming text and turning blanks into null', () => {
-    expect(lowerThirdFromInputs(base)).toEqual({ ok: true, draft: { type: 'lowerthird', name: 'Pastor John', info: 'Guest speaker', align: 'center', logo: null, logoData: null, hideAfter: null } });
+    expect(lowerThirdFromInputs(base)).toEqual({ ok: true, draft: { type: 'lowerthird', name: 'Pastor John', info: 'Guest speaker', align: 'center', logo: null, logoData: null, font: null, hideAfter: null } });
     expect(lowerThirdFromInputs({ ...base, logo: 'john.png', hideAfter: ' 8 ' }).draft).toMatchObject({ logo: 'john.png', hideAfter: 8 });
   });
   it('needs some text', () => {
@@ -84,7 +99,7 @@ describe('lowerThirdFromInputs', () => {
 describe('lowerThirdItem', () => {
   it('builds an item with a prefixed id that a plan record accepts', () => {
     const item = lowerThirdItem({ name: ' A ', info: ' B ', align: 'right', logo: 'a.png', hideAfter: 5 }, () => 'u1');
-    expect(item).toEqual({ id: 'i_u1', type: 'lowerthird', name: 'A', info: 'B', align: 'right', logo: 'a.png', logoData: null, hideAfter: 5 });
+    expect(item).toEqual({ id: 'i_u1', type: 'lowerthird', name: 'A', info: 'B', align: 'right', logo: 'a.png', logoData: null, font: null, hideAfter: 5 });
     expect(isPlanRecord({ v: 1, id: 'p', name: 'P', items: [item] })).toBe(true);
   });
   it('defaults placement, picture and hide time', () => {
