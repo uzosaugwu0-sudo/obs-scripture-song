@@ -1,5 +1,7 @@
 export const STATE_VERSION = 1;
 const ACTIONS = Object.freeze(['show', 'hide', 'clear']);
+import { isKnownFont } from './fonts.js';
+
 export const KINDS = Object.freeze(['verse', 'song', 'announcement', 'timer', 'lowerthird']);
 export const THEMES = Object.freeze(['frosted', 'frosted-light', 'pure', 'sacred-light', 'custom']);
 export const ANIMATIONS = Object.freeze(['rise', 'wipe', 'lines', 'cut']);
@@ -11,7 +13,7 @@ export const DEFAULTS = Object.freeze({
   body:          '',        // verse text or slide lines
   reference:     '',        // scripture reference
   timer:         null,      // timer kind only: { endAt } while running, { remainingMs } while paused
-  lowerthird:    null,      // lowerthird kind only: { align, logo }
+  lowerthird:    null,      // lowerthird kind only: { align, logo, font }
   theme:         'frosted',
   position:      'bottom',
   fontSize:      'md',
@@ -66,7 +68,7 @@ const textOf = (value) => (typeof value === 'string' ? value : '');
 
 function cleanLowerThird(value) {
   const v = value && typeof value === 'object' ? value : {};
-  return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : 'left', logo: isLogoDataUrl(v.logo) ? v.logo : null };
+  return { align: LOWER_THIRD_ALIGNS.includes(v.align) ? v.align : 'left', logo: isLogoDataUrl(v.logo) ? v.logo : null, font: isKnownFont(v.font) ? v.font : null };
 }
 
 /**

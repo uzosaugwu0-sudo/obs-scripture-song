@@ -1,6 +1,7 @@
 import { $ } from '../shared/util.js';
 import { announcementFromInputs, timerFromInputs, lowerThirdFromInputs, MAX_ITEM_LOGO_DATA } from '../../plan/extras.js';
 import { encodeLogo, logoDataUrl } from './logo-store.js';
+import { FONTS } from '../../core/fonts.js';
 
 const NO_FOLDER_HINT = 'No picture folder is chosen, so a picture you add is kept inside this lower third.';
 const EMBEDDED = '@embedded';   // the drop-down value for a picture kept inside the lower third
@@ -17,7 +18,7 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
         modeButtons = [...document.querySelectorAll('#ed-mode button')],
         durationFields = $('ed-duration-fields'), clockFields = $('ed-clock-fields'),
         minutes = $('ed-minutes'), seconds = $('ed-seconds'), clock = $('ed-clock'),
-        ltName = $('ed-lt-name'), ltInfo = $('ed-lt-info'), ltHide = $('ed-lt-hide'), ltLogo = $('ed-lt-logo'),
+        ltName = $('ed-lt-name'), ltInfo = $('ed-lt-info'), ltHide = $('ed-lt-hide'), ltFont = $('ed-lt-font'), ltLogo = $('ed-lt-logo'),
         ltAddLogo = $('ed-lt-add-logo'), ltFile = $('ed-lt-file'), ltLogoHint = $('ed-lt-logo-hint'),
         ltFolderName = $('ed-lt-folder-name'), ltChooseFolder = $('ed-lt-choose-folder'),
         ltReconnect = $('ed-lt-reconnect'), ltForgetFolder = $('ed-lt-forget-folder'),
@@ -26,6 +27,12 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
 
   const home = root.parentNode, homeNext = root.nextSibling;   // where the editor sits unless a tab asks to host it
   let handlers = { onAdd, onSave, onShowNow, onSaveSaved };
+  ltFont.replaceChildren(...[{ label: 'Same as Style tab', value: '' }, ...FONTS].map(({ value, label }) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }));
   let type = 'announcement';
   let mode = 'duration';
   let align = 'left';
@@ -35,7 +42,7 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
   function read() {
     if (type === 'announcement') return announcementFromInputs({ title: title.value, body: text.value });
     if (type === 'timer') return timerFromInputs({ mode, title: title.value, minutes: minutes.value, seconds: seconds.value, clock: clock.value });
-    return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value === EMBEDDED ? '' : ltLogo.value, logoData: ltLogo.value === EMBEDDED ? embedded : '', hideAfter: ltHide.value });
+    return lowerThirdFromInputs({ name: ltName.value, info: ltInfo.value, align, logo: ltLogo.value === EMBEDDED ? '' : ltLogo.value, logoData: ltLogo.value === EMBEDDED ? embedded : '', font: ltFont.value, hideAfter: ltHide.value });
   }
 
   function setPressed(buttons, value) {
@@ -129,6 +136,7 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
     ltName.value = item && type === 'lowerthird' ? (item.name || '') : '';
     ltInfo.value = item && type === 'lowerthird' ? (item.info || '') : '';
     ltHide.value = item && type === 'lowerthird' && item.hideAfter ? String(item.hideAfter) : '';
+    ltFont.value = item && type === 'lowerthird' && item.font ? item.font : '';
     setAlign(item && type === 'lowerthird' && item.align ? item.align : 'left');
     embedded = item && type === 'lowerthird' && item.logoData ? item.logoData : null;
     fillLogos(embedded ? EMBEDDED : (item && type === 'lowerthird' ? (item.logo || '') : ''));
@@ -141,6 +149,7 @@ export function initExtrasEditor({ logoStore, pictureFolder, onAdd, onSave, onSh
 
   [title, text, minutes, seconds, clock, ltName, ltInfo, ltHide].forEach((field) => field.addEventListener('input', update));
   ltLogo.addEventListener('change', update);
+  ltFont.addEventListener('change', update);
   modeButtons.forEach((button) => button.addEventListener('click', () => { setMode(button.dataset.value); update(); }));
   alignButtons.forEach((button) => button.addEventListener('click', () => { setAlign(button.dataset.value); update(); }));
 

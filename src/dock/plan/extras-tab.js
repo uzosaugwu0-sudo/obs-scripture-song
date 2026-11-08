@@ -84,7 +84,7 @@ export function initExtrasTab({
   };
 
   // ── Lower third ──────────────────────────────────────────────────────────
-  let lowerThird = { name: '', info: '', align: 'left', logo: null, hideAfter: null };
+  let lowerThird = { name: '', info: '', align: 'left', logo: null, font: null, hideAfter: null };
   let logoData = null;                    // the picture as a data URL, once it has been read
   let logoPending = Promise.resolve();    // resolves when the picture read for the loaded item is done
   let hideToken = 0;                      // identifies the Show that armed the automatic hide
@@ -93,7 +93,7 @@ export function initExtrasTab({
   const lowerThirdTab = {
     load(item) {
       const wanted = item.logo || null;
-      lowerThird = { name: (item.name || '').trim(), info: (item.info || '').trim(), align: item.align || 'left', logo: wanted, hideAfter: item.hideAfter || null };
+      lowerThird = { name: (item.name || '').trim(), info: (item.info || '').trim(), align: item.align || 'left', logo: wanted, font: item.font || null, hideAfter: item.hideAfter || null };
       const embedded = isLogoDataUrl(item.logoData) ? item.logoData : null;   // a picture kept inside the item needs no folder
       logoData = embedded;
       logoPending = !embedded && wanted && logoStore
@@ -107,7 +107,7 @@ export function initExtrasTab({
       let waited;
       do { waited = logoPending; await waited; } while (waited !== logoPending);
     },
-    getContent: () => ({ title: lowerThird.name, body: lowerThird.info, lowerthird: { align: lowerThird.align, logo: logoData } }),
+    getContent: () => ({ title: lowerThird.name, body: lowerThird.info, lowerthird: { align: lowerThird.align, logo: logoData, font: lowerThird.font } }),
     preview() {
       const text = lowerThird.name || lowerThird.info;
       if (!text) return { ...NOTHING, sub: 'Lower third' };

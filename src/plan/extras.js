@@ -1,6 +1,7 @@
 import { formatClock } from '../overlay/timer-clock.js';
 import { isValidLogoName } from './logos.js';
 import { isLogoDataUrl } from '../core/state.js';
+import { isKnownFont } from '../core/fonts.js';
 
 export const MAX_TIMER_SECONDS = 359999;   // 99:59:59
 
@@ -76,6 +77,7 @@ export function isValidLowerThird(item) {
   if ((item.name !== undefined && typeof item.name !== 'string') || (item.info !== undefined && typeof item.info !== 'string')) return false;
   if (!textOrEmpty(item.name) && !textOrEmpty(item.info)) return false;
   if (item.align !== undefined && !ALIGNS.includes(item.align)) return false;
+  if (item.font != null && !isKnownFont(item.font)) return false;
   if (item.logo != null && !isValidLogoName(item.logo)) return false;
   if (item.logoData != null && !usableLogoData(item.logoData)) return false;
   if (item.hideAfter != null && !(Number.isInteger(item.hideAfter) && item.hideAfter >= 1 && item.hideAfter <= MAX_HIDE_AFTER)) return false;
@@ -85,7 +87,7 @@ export function isValidLowerThird(item) {
 export const describeLowerThird = (item) => (item.hideAfter ? 'hides after ' + item.hideAfter + 's' : 'stays');
 
 /** Read the lower third editor. hideAfter is the raw field text; blank means it stays until Hide. */
-export function lowerThirdFromInputs({ name = '', info = '', align = 'left', logo = '', logoData = '', hideAfter = '' }) {
+export function lowerThirdFromInputs({ name = '', info = '', align = 'left', logo = '', logoData = '', font = '', hideAfter = '' }) {
   const n = name.trim();
   const i = info.trim();
   if (!n && !i) return { ok: false, hint: 'Enter a name or some info.' };
@@ -98,6 +100,6 @@ export function lowerThirdFromInputs({ name = '', info = '', align = 'left', log
   if (logoData && !usableLogoData(logoData)) return { ok: false, hint: 'That picture could not be used. Choose it again.' };
   return {
     ok: true,
-    draft: { type: 'lowerthird', name: n, info: i, align: ALIGNS.includes(align) ? align : 'left', logo: logoData ? null : (logo || null), logoData: logoData || null, hideAfter: seconds },
+    draft: { type: 'lowerthird', name: n, info: i, align: ALIGNS.includes(align) ? align : 'left', logo: logoData ? null : (logo || null), logoData: logoData || null, font: isKnownFont(font) ? font : null, hideAfter: seconds },
   };
 }

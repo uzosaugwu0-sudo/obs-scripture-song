@@ -23,7 +23,9 @@ describe('loading and content', () => {
     const { tab } = setup();
     expect(tab.preview().has).toBe(false);
     expect(tab.load(item())).toBe(true);
-    expect(tab.getContent()).toEqual({ title: 'Pastor John', body: 'Guest speaker', lowerthird: { align: 'center', logo: null } });
+    expect(tab.getContent()).toEqual({ title: 'Pastor John', body: 'Guest speaker', lowerthird: { align: 'center', logo: null, font: null } });
+    tab.load(item({ font: 'Cinzel' }));
+    expect(tab.getContent().lowerthird.font).toBe('Cinzel');
     expect(tab.preview()).toMatchObject({ has: true, text: 'Pastor John', sub: 'Lower third · Guest speaker', canNav: false });
     expect(tab.load(item({ name: '', info: '' }))).toBe(false);
   });
